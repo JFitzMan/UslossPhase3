@@ -18,7 +18,9 @@
 	}						\
 }
 
-void nullsys3(sysargs *args)
+
+
+void nullsys3(systemArgs *args)
 {
   USLOSS_Console("nullsys(): Invalid syscall %d. Halting...\n", args->number);
   USLOSS_Halt(1);

@@ -4,18 +4,29 @@
 #include <phase3.h>
 #include <usyscall.h>
 
+/* -------------------------- Globals ------------------------------------- */ 
 
-int
-start2(char *arg)
+int debugflag3 = 0;
+
+//system vec array
+void (*sys_vec[MAXSYSCALLS])(systemArgs *args);
+//process table
+
+
+int start2(char *arg)
 {
     int pid;
     int status;
+
+    if (DEBUG3 && debugflag3)
+        USLOSS_Console("start1(): at beginning\n");
     /*
      * Check kernel mode here.
      */
 
     /*
      * Data structure initialization as needed...
+     * Need proc table again
      */
 
 
@@ -47,13 +58,13 @@ start2(char *arg)
      * values back into the sysargs pointer, switch to user-mode, and 
      * return to the user code that called Spawn.
      */
-    pid = spawnReal("start3", start3, NULL, USLOSS_MIN_STACK, 3);
+    //pid = spawnReal("start3", start3, NULL, USLOSS_MIN_STACK, 3);
 
     /* Call the waitReal version of your wait code here.
      * You call waitReal (rather than Wait) because start2 is running
      * in kernel (not user) mode.
      */
-    pid = waitReal(&status);
+    //pid = waitReal(&status);
 
 } /* start2 */
 
