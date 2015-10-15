@@ -40,6 +40,7 @@ int start2(char *arg)
 
     //initialize mailboxes
     procTable_mutex = MboxCreate(1, 0);
+    int toBlock = MboxCreate(0,0);
 
     /*
      * Data structure initialization as needed...
@@ -47,14 +48,14 @@ int start2(char *arg)
      */
 
     int i;
-    //initialize empty syscalls to nullsys3 function
+    //initialize  syscalls to nullsys3 function
     for(i = 0; i<MAXSYSCALLS; i++)
         systemCallVec[i] = nullsys3;
 
 
     //no idea why spawn_num is set to 3, other syscalls being used?
     systemCallVec[3] = spawn;
-
+    systemCallVec[4] = wait1;
 
     /*
     Still need to create these functions
@@ -150,8 +151,7 @@ int start2(char *arg)
      * You call waitReal (rather than Wait) because start2 is running
      * in kernel (not user) mode.
      */
-     int toBlock = MboxCreate(0,0);
-     MboxSend(toBlock, NULL, 0);
+     //MboxSend(toBlock, NULL, 0);
      pid = wait1Real(&status);
 
 } /* start2 */
@@ -170,6 +170,14 @@ int inKernelMode(char *procName)
     else{
       return 1;
     }
+}
+
+void setToUserMode()
+{
+    unsigned int psr = USLOSS_PsrGet();
+    psr = psr >> 1;
+    psr = psr << 1;
+    USLOSS_PsrSet(psr);
 }
 /*
 *   spawn will extract the arguments from the systemArgs stuct given by
@@ -253,6 +261,9 @@ void spawn (systemArgs *args)
     args->arg1 = kpid;
     //no errors at this point, arg4 can be set to 0
     args->arg4 = 0;
+    //will return to user level function, set to user mode!
+    setToUserMode();
+    return;
 
 }
 
@@ -332,10 +343,7 @@ int spawnLaunch()
     //switch to user mode
     //The idea here is to shift off the current mode bit and bring it
     //back in as 0
-    unsigned int psr = USLOSS_PsrGet();
-    psr = psr >> 1;
-    psr = psr << 1;
-    USLOSS_PsrSet(psr);
+    setToUserMode();
 
     if (DEBUG3 && debugflag3)
             USLOSS_Console("spawnLaunch(): PRS set to user mode\n");
@@ -349,12 +357,29 @@ int spawnLaunch()
 
 void wait1(systemArgs *args)
 {
+    if (DEBUG3 && debugflag3)
+            USLOSS_Console("wait1(): at beginning\n");
+    //Wait has no input, check to make sure it was called legally
+    if (procTable[getpid()].nextChild == NULL){
+        USLOSS_Console("wait1(): process calling Wait has no children!\n");
+        USLOSS_Halt(1);
+    }
+    int kpid, status;
+    kpid = wait1Real(&status);
+    //set output in args
+    args->arg1 = (void *) kpid;
+    args->arg2 = (void *) status;
+    setToUserMode();
+
 
 }
 
 int wait1Real(int * status)
 {
-
+    if (DEBUG3 && debugflag3)
+            USLOSS_Console("wait1Real(): blocking process on mailbox\n");
+    //getting here means it just needs to wait to be woken up
+    MboxReceive(procTable[getpid()].privateMbox, NULL, 0);
 }
 
 

@@ -11,11 +11,12 @@
 extern int  start2 (char *);
 extern int 	start3 (char *);
 extern int 	inKernelMode(char *procName);
+extern void	setToUserMode();
 extern int 	start2(char *arg);
 extern void spawn(systemArgs *args);
 extern int 	spawnReal(char *name, int (*func)(char *), char *arg, 
 	int stack_size, int priority);
-extern int spawnLaunch();
+extern int 	spawnLaunch();
 extern void wait1(systemArgs *args);
 extern int 	wait1Real(int * status);
 
