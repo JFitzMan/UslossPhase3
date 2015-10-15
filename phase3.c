@@ -40,7 +40,6 @@ int start2(char *arg)
 
     //initialize mailboxes
     procTable_mutex = MboxCreate(1, 0);
-    int toBlock = MboxCreate(0,0);
 
     /*
      * Data structure initialization as needed...
@@ -110,7 +109,7 @@ int start2(char *arg)
     procTable[getpid()].nextChild = NULL;
     procTable[getpid()].nextSib = NULL;
     procTable[getpid()].parent = NULL;
-    procTable[getpid()].privateMbox = MboxCreate(0,0);
+    procTable[getpid()].privateMbox = MboxCreate(0,sizeof(int[2]));
     procTable[getpid()].termCode = -1;
 
     MboxReceive(procTable_mutex, NULL, 0);
@@ -303,7 +302,7 @@ int spawnReal(char *name, int (*func)(char *), char *arg,
     procTable[kpid].nextChild = NULL;
     procTable[kpid].parent = &procTable[getpid()];
     procTable[kpid].parentPid = getpid();
-    procTable[kpid].privateMbox = MboxCreate(0, 0);
+    procTable[kpid].privateMbox = MboxCreate(0, sizeof(int[2]));
 
     //add to parent's child list
     if (procTable[getpid()].nextChild != NULL){
@@ -379,7 +378,13 @@ int wait1Real(int * status)
     if (DEBUG3 && debugflag3)
             USLOSS_Console("wait1Real(): blocking process on mailbox\n");
     //getting here means it just needs to wait to be woken up
-    MboxReceive(procTable[getpid()].privateMbox, NULL, 0);
+
+    //this array contains [ -1, -1], and will be the result of the recieve
+    int result [] = {-1, -1};
+    MboxReceive(procTable[getpid()].privateMbox, result, sizeof(int[2]));
+
+    //process has been woken up by send of terminating child
+
 }
 
 
