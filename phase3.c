@@ -17,6 +17,9 @@ void (*sys_vec[MAXSYSCALLS])(systemArgs *args);
 struct procSlot procTable[MAXPROC];
 //process table editing mailbox
 int procTable_mutex;
+//next function ptr for spawnLaunch to execute
+int (*next_func)(char *);
+
 
 
 int start2(char *arg)
@@ -64,9 +67,14 @@ int start2(char *arg)
         procTable[i].pid = -1;
         procTable[i].nextProc = NULL;
     }
+    //set up currently running procs
+
 
     //initialize mailboxes
     procTable_mutex = MboxCreate(1, 0);
+
+    if (DEBUG3 && debugflag3)
+        USLOSS_Console("start2(): data structures initialized\n");
     /*
      * Create first user-level process and wait for it to finish.
      * These are lower-case because they are not system calls;
@@ -95,12 +103,14 @@ int start2(char *arg)
      * values back into the sysargs pointer, switch to user-mode, and 
      * return to the user code that called Spawn.
      */
-    //pid = spawnReal("start3", start3, NULL, USLOSS_MIN_STACK, 3);
+    pid = spawnReal("start3", start3, NULL, USLOSS_MIN_STACK, 3);
 
     /* Call the waitReal version of your wait code here.
      * You call waitReal (rather than Wait) because start2 is running
      * in kernel (not user) mode.
      */
+     int toBlock = MboxCreate(0,0);
+     MboxSend(toBlock, NULL, 0);
     //pid = waitReal(&status);
 
 } /* start2 */
@@ -138,7 +148,7 @@ void spawn (systemArgs *args)
     //return if name is an illegal value
     if (name == NULL){
         if (DEBUG3 && debugflag3)
-            USLOSS_Console("spawn(): illegal value for name! Returning");
+            USLOSS_Console("spawn(): illegal value for name! Returning\n");
         args->arg1 = (void *) -1;
         args->arg4 = (void *) -1;
         return;
@@ -146,7 +156,7 @@ void spawn (systemArgs *args)
     //return if priority is an illegal value
     if (priority < 3 || priority > 5){
         if (DEBUG3 && debugflag3)
-            USLOSS_Console("spawn(): illegal value for priority! Returning");
+            USLOSS_Console("spawn(): illegal value for priority! Returning\n");
         args->arg1 = (void *) -1;
         args->arg4 = (void *) -1;
         return;
@@ -154,7 +164,7 @@ void spawn (systemArgs *args)
     //return if stack size is and illegal value
     if (stack_size < USLOSS_MIN_STACK){
         if (DEBUG3 && debugflag3)
-            USLOSS_Console("spawn(): illegal value for stack size! Returning");
+            USLOSS_Console("spawn(): illegal value for stack size! Returning\n");
         args->arg1 = (void *) -1;
         args->arg4 = (void *) -1;
         return;
@@ -162,7 +172,7 @@ void spawn (systemArgs *args)
     //return if name is an illegal value
     if (strlen(name) > MAXNAME){
         if (DEBUG3 && debugflag3)
-            USLOSS_Console("spawn(): illegal value for name! Returning");
+            USLOSS_Console("spawn(): illegal value for name! Returning\n");
         args->arg1 = (void *) -1;
         args->arg4 = (void *) -1;
         return;
@@ -170,21 +180,50 @@ void spawn (systemArgs *args)
     //return if arg is an illegal value
     if (strlen(arg) > MAXARG){
         if (DEBUG3 && debugflag3)
-            USLOSS_Console("spawn(): illegal value for arg! Returning");
+            USLOSS_Console("spawn(): illegal value for arg! Returning\n");
         args->arg1 = (void *) -1;
         args->arg4 = (void *) -1;
         return;
     }
+    //arguments are legal, give them to spawnReal, pass arg1 for pid
+    int kpid = spawnReal(name, func, arg, stack_size, priority);
 
+    //check to make sure spawnReal worked
+    if (kpid == -1){
+        if (DEBUG3 && debugflag3)
+            USLOSS_Console("spawn(): fork1 failed to create process, returning -1\n");
+        args->arg4 = (void *) -1;
+    }
 
 }
 
 int spawnReal(char *name, int (*func)(char *), char *arg, 
-    int stack_size, int priority, int *pid)
+    int stack_size, int priority)
 {
+    if (DEBUG3 && debugflag3)
+            USLOSS_Console("spawnReal(): at beginning\n");
+    int kpid;
+    next_func = func;
+
+    //create new process
+    kpid = fork1(name, spawnLaunch, arg, stack_size, priority);
+
+    //send to mutex box to edit proc table
+    MboxSend(procTable_mutex, NULL, 0);
+
+    MboxReceive(procTable_mutex, NULL, 0);
 
 }
 
+int spawnLaunch()
+{
+    if (DEBUG3 && debugflag3)
+            USLOSS_Console("spawnLaunch(): at beginning\n");
+
+    //switch to user mode and execute code
+    
+
+}
 
 
 
