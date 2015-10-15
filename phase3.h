@@ -9,6 +9,10 @@
 
 #define MAXSEMS         200
 
+extern int inKernelMode(char *procName);
+extern int start2(char *arg);
+extern void spawn(systemArgs *args);
+
 typedef struct procSlot *procPtr;
 typedef struct semaphore *semaphore;
 

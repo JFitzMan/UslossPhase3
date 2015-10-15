@@ -4,15 +4,16 @@
 #include <phase3.h>
 #include <libuser.h>
 #include <usyscall.h>
-
+#include <stdlib.h>
+#include <stdio.h>
 /* -------------------------- Globals ------------------------------------- */ 
 
 int debugflag3 = 1;
 
-//system vec array
+//sysvec array
 void (*sys_vec[MAXSYSCALLS])(systemArgs *args);
 //process table
-procPtr processTable[MAXPROC];
+struct procSlot procTable[MAXPROC];
 
 
 int start2(char *arg)
@@ -22,10 +23,12 @@ int start2(char *arg)
 
     if (DEBUG3 && debugflag3)
         USLOSS_Console("start2(): at beginning\n");
-    /*
-     * Check kernel mode here.
-     */
 
+    //check kernel mode
+    if ( !inKernelMode("start2") ){
+        USLOSS_Console("Start 2(): Not in kernel mode! Halting...");
+        USLOSS_Halt(1);
+    }
     /*
      * Data structure initialization as needed...
      * Need proc table again
@@ -33,20 +36,31 @@ int start2(char *arg)
 
     int i;
     sys_vec[0] = nullsys3;
-    sys_vec[1] = Spawn;
-    sys_vec[2] = Wait;
-    sys_vec[3] = Terminate;
-    sys_vec[4] = SemCreate;
-    sys_vec[5] = SemP;
-    sys_vec[6] = SemV;
-    sys_vec[7] = SemFree;
-    sys_vec[8] = GetTimeofDay;
-    sys_vec[9] = CPUTime;
-    sys_vec[10] = GetPID;
+    sys_vec[1] = spawn;
+    /* 
+    Still need to create these functions
 
-    for(i =11; i<MAXSYSCALLS; i++)
+    sys_vec[2] = wait;
+    sys_vec[3] = terminate;
+    sys_vec[4] = semCreate;
+    sys_vec[5] = semP;
+    sys_vec[6] = semV;
+    sys_vec[7] = semFree;
+    sys_vec[8] = getTimeofDay;
+    sys_vec[9] = cpuTime;
+    sys_vec[10] = getPID;
+
+    */
+
+    //initialize empty syscalls to nullsys3 function
+    for(i = 2; i<MAXSYSCALLS; i++)
         sys_vec[i] = nullsys3;
 
+    //inititalize process table
+    for(i = 0; i < MAXPROC; i++){
+        procTable[i].pid = -1;
+        procTable[i].nextProc = NULL;
+    }
 
     /*
      * Create first user-level process and wait for it to finish.
@@ -90,7 +104,8 @@ int start2(char *arg)
  *checks the PSR for kernel mode
  *returns true in if its in kernel mode, and false if not
 */
-int inKernelMode(char *procName){
+int inKernelMode(char *procName)
+{
     if( (USLOSS_PSR_CURRENT_MODE & USLOSS_PsrGet()) == 0 ) {
       USLOSS_Console("Kernel Error: Not in kernel mode, may not run %s()\n", procName);
       USLOSS_Halt(1);
@@ -100,3 +115,37 @@ int inKernelMode(char *procName){
       return 1;
     }
 }
+
+void spawn (systemArgs *args)
+{
+    //extract args and check for errors
+    int (*func)(char *) = args->arg1;
+
+}
+
+int spawnReal(char *name, int (*func)(char *), char *arg, 
+    int stack_size, int priority, int *pid)
+{
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
