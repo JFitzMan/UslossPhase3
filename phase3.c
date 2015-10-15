@@ -2,7 +2,7 @@
 #include <phase1.h>
 #include <phase2.h>
 #include <phase3.h>
-#include <libuser.c>
+#include <libuser.h>
 #include <usyscall.h>
 
 /* -------------------------- Globals ------------------------------------- */ 
@@ -30,8 +30,21 @@ int start2(char *arg)
      * Data structure initialization as needed...
      * Need proc table again
      */
+
     int i;
-    for(i =0; i<MAXSYSCALLS; i++)
+    sys_vec[0] = nullsys3;
+    sys_vec[1] = Spawn;
+    sys_vec[2] = Wait;
+    sys_vec[3] = Terminate;
+    sys_vec[4] = SemCreate;
+    sys_vec[5] = SemP;
+    sys_vec[6] = SemV;
+    sys_vec[7] = SemFree;
+    sys_vec[8] = GetTimeofDay;
+    sys_vec[9] = CPUTime;
+    sys_vec[10] = GetPID;
+
+    for(i =11; i<MAXSYSCALLS; i++)
         sys_vec[i] = nullsys3;
 
 
@@ -73,3 +86,17 @@ int start2(char *arg)
 
 } /* start2 */
 
+/*
+ *checks the PSR for kernel mode
+ *returns true in if its in kernel mode, and false if not
+*/
+int inKernelMode(char *procName){
+    if( (USLOSS_PSR_CURRENT_MODE & USLOSS_PsrGet()) == 0 ) {
+      USLOSS_Console("Kernel Error: Not in kernel mode, may not run %s()\n", procName);
+      USLOSS_Halt(1);
+      return 0;
+    }
+    else{
+      return 1;
+    }
+}
