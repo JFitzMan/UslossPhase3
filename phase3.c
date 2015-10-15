@@ -15,6 +15,8 @@ int debugflag3 = 1;
 void (*sys_vec[MAXSYSCALLS])(systemArgs *args);
 //process table
 struct procSlot procTable[MAXPROC];
+//process table editing mailbox
+int procTable_mutex;
 
 
 int start2(char *arg)
@@ -63,6 +65,8 @@ int start2(char *arg)
         procTable[i].nextProc = NULL;
     }
 
+    //initialize mailboxes
+    procTable_mutex = MboxCreate(1, 0);
     /*
      * Create first user-level process and wait for it to finish.
      * These are lower-case because they are not system calls;
