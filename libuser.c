@@ -7,6 +7,7 @@
 
 #include <phase1.h>
 #include <phase2.h>
+#include <phase3.h>
 #include <libuser.h>
 #include <usyscall.h>
 #include <usloss.h>
@@ -18,11 +19,13 @@
 	}						\
 }
 
+int debugflaglib3 = 1;
+
 
 
 void nullsys3(systemArgs *args)
 {
-  USLOSS_Console("nullsys(): Invalid syscall %d. Halting...\n", args->number);
+  USLOSS_Console("nullsys3(): Invalid syscall %d. Halting...\n", args->number);
   USLOSS_Halt(1);
   //Eventually this will need to terminate instead of halting
 }
@@ -46,6 +49,9 @@ void nullsys3(systemArgs *args)
 int Spawn(char *name, int (*func)(char *), char *arg, int stack_size,
 	int priority, int *pid)
 {
+    if (DEBUG3 && debugflaglib3)
+            USLOSS_Console("Spawn(): at beginning\n");
+
     systemArgs sysArg;
 
     CHECKMODE;

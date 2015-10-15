@@ -12,13 +12,15 @@
 int debugflag3 = 1;
 
 //sysvec array
-void (*sys_vec[MAXSYSCALLS])(systemArgs *args);
+//void (*sys_vec[MAXSYSCALLS])(systemArgs *args);
+//void (*systemCallVec[MAXSYSCALLS])(systemArgs *args);
 //process table
 struct procSlot procTable[MAXPROC];
 //process table editing mailbox
 int procTable_mutex;
 //next function ptr for spawnLaunch to execute
 int (*next_func)(char *);
+char * next_arg;
 
 
 
@@ -41,9 +43,16 @@ int start2(char *arg)
      */
 
     int i;
-    sys_vec[0] = nullsys3;
-    sys_vec[1] = spawn;
-    /* 
+    //initialize empty syscalls to nullsys3 function
+    for(i = 0; i<MAXSYSCALLS; i++)
+        systemCallVec[i] = nullsys3;
+
+
+    //no idea why spawn_num is set to 3, other syscalls being used?
+    systemCallVec[3] = spawn;
+
+
+    /*
     Still need to create these functions
 
     sys_vec[2] = wait;
@@ -58,14 +67,13 @@ int start2(char *arg)
 
     */
 
-    //initialize empty syscalls to nullsys3 function
-    for(i = 2; i<MAXSYSCALLS; i++)
-        sys_vec[i] = nullsys3;
+    
 
     //inititalize process table
     for(i = 0; i < MAXPROC; i++){
         procTable[i].pid = -1;
         procTable[i].nextProc = NULL;
+        procTable[i].priority = -1;
     }
     //set up currently running procs
 
@@ -133,6 +141,8 @@ int inKernelMode(char *procName)
 
 void spawn (systemArgs *args)
 {
+    if (DEBUG3 && debugflag3)
+            USLOSS_Console("spawn(): at beginning\n");
     /* extract args and check for errors */
     //get address of function to spawn
     int (*func)(char *) = args->arg1;
@@ -178,12 +188,15 @@ void spawn (systemArgs *args)
         return;
     }
     //return if arg is an illegal value
-    if (strlen(arg) > MAXARG){
+    if ( arg != NULL && strlen(arg) > MAXARG){
         if (DEBUG3 && debugflag3)
             USLOSS_Console("spawn(): illegal value for arg! Returning\n");
         args->arg1 = (void *) -1;
         args->arg4 = (void *) -1;
         return;
+
+    if (DEBUG3 && debugflag3)
+            USLOSS_Console("spawn(): At end\n");
     }
     //arguments are legal, give them to spawnReal, pass arg1 for pid
     int kpid = spawnReal(name, func, arg, stack_size, priority);
@@ -195,6 +208,9 @@ void spawn (systemArgs *args)
         args->arg4 = (void *) -1;
     }
 
+    //assign pid to proper spot of arg struct
+    args->arg1 = kpid;
+
 }
 
 int spawnReal(char *name, int (*func)(char *), char *arg, 
@@ -203,7 +219,10 @@ int spawnReal(char *name, int (*func)(char *), char *arg,
     if (DEBUG3 && debugflag3)
             USLOSS_Console("spawnReal(): at beginning\n");
     int kpid;
+
+    //get values needed by spawn launch to globals so it can launch
     next_func = func;
+    if(arg == NULL) next_arg = NULL; else strcpy(next_arg, arg);
 
     //create new process
     kpid = fork1(name, spawnLaunch, arg, stack_size, priority);
@@ -211,17 +230,45 @@ int spawnReal(char *name, int (*func)(char *), char *arg,
     //send to mutex box to edit proc table
     MboxSend(procTable_mutex, NULL, 0);
 
+    procTable[kpid].pid = kpid;
+    procTable[kpid].start_func = func;
+    procTable[kpid].name = name;
+    if(arg == NULL) procTable[kpid].arg = NULL; else strcpy(procTable[kpid].arg, arg);
+    procTable[kpid].stack_size = stack_size;
+    procTable[kpid].priority = priority;
+    procTable[kpid].nextProc = NULL;
+    procTable[kpid].privateMbox = MboxCreate(0, 0);
+    //release mutex box for proc table
     MboxReceive(procTable_mutex, NULL, 0);
+
+    if (DEBUG3 && debugflag3)
+            USLOSS_Console("spawnReal(): at end\n");
+        
+    //return kpid to spawn so it can set the return field
+    return kpid;
 
 }
 
+//spawn launch won't actually return, but it fixes a warning if it returns int
 int spawnLaunch()
 {
     if (DEBUG3 && debugflag3)
             USLOSS_Console("spawnLaunch(): at beginning\n");
 
-    //switch to user mode and execute code
-    
+    //switch to user mode
+    //The idea here is to shift off the current mode bit and bring it
+    //back in as 0
+    unsigned int psr = USLOSS_PsrGet();
+    psr = psr >> 1;
+    psr = psr << 1;
+    USLOSS_PsrSet(psr);
+
+    if (DEBUG3 && debugflag3)
+            USLOSS_Console("spawnLaunch(): PRS set to user mode\n");
+
+    int result = next_func(next_arg);
+
+    USLOSS_Halt(1);
 
 }
 
