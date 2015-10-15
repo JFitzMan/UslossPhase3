@@ -6,12 +6,14 @@
 #define _PHASE3_H
 
 #define DEBUG3 			1
-
 #define MAXSEMS         200
 
-extern int inKernelMode(char *procName);
-extern int start2(char *arg);
+extern int 	inKernelMode(char *procName);
+extern int 	start2(char *arg);
 extern void spawn(systemArgs *args);
+extern int 	spawnReal(char *name, int (*func)(char *), char *arg, 
+	int stack_size, int priority, int *pid);
+
 
 typedef struct procSlot *procPtr;
 typedef struct semaphore *semaphore;

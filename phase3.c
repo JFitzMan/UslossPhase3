@@ -6,6 +6,7 @@
 #include <usyscall.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 /* -------------------------- Globals ------------------------------------- */ 
 
 int debugflag3 = 1;
@@ -118,8 +119,59 @@ int inKernelMode(char *procName)
 
 void spawn (systemArgs *args)
 {
-    //extract args and check for errors
+    /* extract args and check for errors */
+    //get address of function to spawn
     int (*func)(char *) = args->arg1;
+    //get function name
+    char* name = args->arg5;
+    //get argument passed to spawned function
+    char * arg = args->arg2;
+    //get stack size
+    int stack_size = (int) args->arg3;
+    //get priority
+    int priority = (int) args->arg4;
+
+    //return if name is an illegal value
+    if (name == NULL){
+        if (DEBUG3 && debugflag3)
+            USLOSS_Console("spawn(): illegal value for name! Returning");
+        args->arg1 = (void *) -1;
+        args->arg4 = (void *) -1;
+        return;
+    }
+    //return if priority is an illegal value
+    if (priority < 3 || priority > 5){
+        if (DEBUG3 && debugflag3)
+            USLOSS_Console("spawn(): illegal value for priority! Returning");
+        args->arg1 = (void *) -1;
+        args->arg4 = (void *) -1;
+        return;
+    }
+    //return if stack size is and illegal value
+    if (stack_size < USLOSS_MIN_STACK){
+        if (DEBUG3 && debugflag3)
+            USLOSS_Console("spawn(): illegal value for priority! Returning");
+        args->arg1 = (void *) -1;
+        args->arg4 = (void *) -1;
+        return;
+    }
+    //return if name is an illegal value
+    if (strlen(name) > MAXNAME){
+        if (DEBUG3 && debugflag3)
+            USLOSS_Console("spawn(): illegal value for priority! Returning");
+        args->arg1 = (void *) -1;
+        args->arg4 = (void *) -1;
+        return;
+    }
+    //return if arg is an illegal value
+    if (strlen(arg) > MAXARG){
+        if (DEBUG3 && debugflag3)
+            USLOSS_Console("spawn(): illegal value for priority! Returning");
+        args->arg1 = (void *) -1;
+        args->arg4 = (void *) -1;
+        return;
+    }
+
 
 }
 
