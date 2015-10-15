@@ -150,7 +150,7 @@ void spawn (systemArgs *args)
     //return if stack size is and illegal value
     if (stack_size < USLOSS_MIN_STACK){
         if (DEBUG3 && debugflag3)
-            USLOSS_Console("spawn(): illegal value for priority! Returning");
+            USLOSS_Console("spawn(): illegal value for stack size! Returning");
         args->arg1 = (void *) -1;
         args->arg4 = (void *) -1;
         return;
@@ -158,7 +158,7 @@ void spawn (systemArgs *args)
     //return if name is an illegal value
     if (strlen(name) > MAXNAME){
         if (DEBUG3 && debugflag3)
-            USLOSS_Console("spawn(): illegal value for priority! Returning");
+            USLOSS_Console("spawn(): illegal value for name! Returning");
         args->arg1 = (void *) -1;
         args->arg4 = (void *) -1;
         return;
@@ -166,7 +166,7 @@ void spawn (systemArgs *args)
     //return if arg is an illegal value
     if (strlen(arg) > MAXARG){
         if (DEBUG3 && debugflag3)
-            USLOSS_Console("spawn(): illegal value for priority! Returning");
+            USLOSS_Console("spawn(): illegal value for arg! Returning");
         args->arg1 = (void *) -1;
         args->arg4 = (void *) -1;
         return;
