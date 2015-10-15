@@ -16,6 +16,8 @@ extern void spawn(systemArgs *args);
 extern int 	spawnReal(char *name, int (*func)(char *), char *arg, 
 	int stack_size, int priority);
 extern int spawnLaunch();
+extern void wait1(systemArgs *args);
+extern int 	wait1Real(int * status);
 
 
 typedef struct procSlot *procPtr;
@@ -23,13 +25,18 @@ typedef struct semaphore *semaphore;
 
 struct procSlot {
 	int			pid;
+	int			parentPid;
 	int 		(* start_func) (char *);
 	char*		name;
+	int			status;
 	char*		arg;
 	int			stack_size;
 	int			priority;
-	procPtr		nextProc;
+	procPtr		nextChild;
+	procPtr		nextSib;
+	procPtr		parent;
 	int			privateMbox;
+	int			termCode;
 
 };
 
@@ -37,6 +44,8 @@ struct semaphore {
 	int 		value;
 	procPtr		nextBlockedProc;
 };
+
+#define READY 	0
 
 #endif /* _PHASE3_H */
 

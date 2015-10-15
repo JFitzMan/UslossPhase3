@@ -37,6 +37,10 @@ int start2(char *arg)
         USLOSS_Console("Start 2(): Not in kernel mode! Halting...");
         USLOSS_Halt(1);
     }
+
+    //initialize mailboxes
+    procTable_mutex = MboxCreate(1, 0);
+
     /*
      * Data structure initialization as needed...
      * Need proc table again
@@ -68,18 +72,47 @@ int start2(char *arg)
     */
 
     
+    MboxSend(procTable_mutex, NULL, 0);
 
     //inititalize process table
     for(i = 0; i < MAXPROC; i++){
         procTable[i].pid = -1;
-        procTable[i].nextProc = NULL;
+        procTable[i].parentPid = -1;
+        procTable[i].nextChild = NULL;
+        procTable[i].nextSib = NULL;
+        procTable[i].parent = NULL;
         procTable[i].priority = -1;
+        procTable[i].start_func = NULL;
+        procTable[i].name = NULL;
+        procTable[i].arg = NULL;
+        procTable[i].stack_size = -1;
+        procTable[i].privateMbox = -1;
+        procTable[i].termCode = -1;
+        procTable[i].status = -1;
     }
-    //set up currently running procs
+    //proc table setup, in case we fdo a dump_proc later
+    procTable[1].name = "sentinel";
+    procTable[1].priority = 6;
+    procTable[2].name = "start1";
+    procTable[2].priority = 1;
 
 
-    //initialize mailboxes
-    procTable_mutex = MboxCreate(1, 0);
+    //get start2 entry completely set up, will be important for spawnReal  
+    procTable[getpid()].pid = getpid();
+    procTable[getpid()].parentPid = 2;  //start1 PID
+    procTable[getpid()].start_func = start2;
+    procTable[getpid()].name = "start2";
+    procTable[getpid()].status = READY;
+    procTable[getpid()].arg = arg;
+    procTable[getpid()].stack_size = USLOSS_MIN_STACK;
+    procTable[getpid()].priority = 1;
+    procTable[getpid()].nextChild = NULL;
+    procTable[getpid()].nextSib = NULL;
+    procTable[getpid()].parent = NULL;
+    procTable[getpid()].privateMbox = MboxCreate(0,0);
+    procTable[getpid()].termCode = -1;
+
+    MboxReceive(procTable_mutex, NULL, 0);
 
     if (DEBUG3 && debugflag3)
         USLOSS_Console("start2(): data structures initialized\n");
@@ -119,7 +152,7 @@ int start2(char *arg)
      */
      int toBlock = MboxCreate(0,0);
      MboxSend(toBlock, NULL, 0);
-    //pid = waitReal(&status);
+     pid = wait1Real(&status);
 
 } /* start2 */
 
@@ -138,7 +171,15 @@ int inKernelMode(char *procName)
       return 1;
     }
 }
-
+/*
+*   spawn will extract the arguments from the systemArgs stuct given by
+*   Spawn(). It will then pass these arguments along to spawnReal()
+*
+*   After the call to spawnReal(), spawn must check to make sure everything
+*   is still okay i.e. not zapped, proper PID returned, etc.
+*
+*   Side Effects: sets values of arg1 and arg4 of *args stuct
+*/
 void spawn (systemArgs *args)
 {
     if (DEBUG3 && debugflag3)
@@ -210,9 +251,18 @@ void spawn (systemArgs *args)
 
     //assign pid to proper spot of arg struct
     args->arg1 = kpid;
+    //no errors at this point, arg4 can be set to 0
+    args->arg4 = 0;
 
 }
 
+/*
+*   spawnReal makes the actuall call to fork1, then updates the process
+*   table
+*
+*   Side Effects: Saves values of func and arg in next_func and next_arg
+*   to be used in spawnLaunch. 
+*/
 int spawnReal(char *name, int (*func)(char *), char *arg, 
     int stack_size, int priority)
 {
@@ -226,8 +276,11 @@ int spawnReal(char *name, int (*func)(char *), char *arg,
 
     //create new process
     kpid = fork1(name, spawnLaunch, arg, stack_size, priority);
+    if (DEBUG3 && debugflag3)
+            USLOSS_Console("spawnReal(): called fork1() to create new process\n");
 
     //send to mutex box to edit proc table
+    //BEGIN CRITICAL SECTION
     MboxSend(procTable_mutex, NULL, 0);
 
     procTable[kpid].pid = kpid;
@@ -236,14 +289,35 @@ int spawnReal(char *name, int (*func)(char *), char *arg,
     if(arg == NULL) procTable[kpid].arg = NULL; else strcpy(procTable[kpid].arg, arg);
     procTable[kpid].stack_size = stack_size;
     procTable[kpid].priority = priority;
-    procTable[kpid].nextProc = NULL;
+    procTable[kpid].nextChild = NULL;
+    procTable[kpid].parent = &procTable[getpid()];
+    procTable[kpid].parentPid = getpid();
     procTable[kpid].privateMbox = MboxCreate(0, 0);
+
+    //add to parent's child list
+    if (procTable[getpid()].nextChild != NULL){
+        //there are other children in the list, add to end
+        procPtr cur = procTable[getpid()].nextChild;
+        while (cur->nextSib != NULL){
+            cur = cur->nextSib;
+        }
+        //cur now points to last sib in the list
+        cur->nextSib = &procTable[kpid];
+
+    }else{
+        //this is the parents first child
+        procTable[getpid()].nextChild = &procTable[kpid];
+    }
+
+    //END CRITICAL SECTION
     //release mutex box for proc table
     MboxReceive(procTable_mutex, NULL, 0);
+    if (DEBUG3 && debugflag3)
+            USLOSS_Console("spawnReal(): added new process to the procTable\n");
 
     if (DEBUG3 && debugflag3)
             USLOSS_Console("spawnReal(): at end\n");
-        
+
     //return kpid to spawn so it can set the return field
     return kpid;
 
@@ -268,7 +342,18 @@ int spawnLaunch()
 
     int result = next_func(next_arg);
 
+    //terminate proc when/if it gets here, may term itself before this
     USLOSS_Halt(1);
+
+}
+
+void wait1(systemArgs *args)
+{
+
+}
+
+int wait1Real(int * status)
+{
 
 }
 
