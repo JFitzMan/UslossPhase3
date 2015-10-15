@@ -17,5 +17,6 @@ extern int  SemCreate(int value, int *semaphore);
 extern int  SemP(int semaphore);
 extern int  SemV(int semaphore);
 extern int  SemFree(int semaphore);
+extern int 	nullsys3(sysargs *args);
 
 #endif

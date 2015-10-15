@@ -15,8 +15,16 @@
 	if (USLOSS_PsrGet() & USLOSS_PSR_CURRENT_MODE) { 				\
 	    USLOSS_Console("Trying to invoke syscall from kernel\n");	\
 	    USLOSS_Halt(1);						\
-	}							\
+	}						\
 }
+
+void nullsys3(sysargs *args)
+{
+  USLOSS_Console("nullsys(): Invalid syscall %d. Halting...\n", args->number);
+  USLOSS_Halt(1);
+  //Eventually this will need to terminate instead of halting
+}
+
 
 /*
  *  Routine:  Spawn
