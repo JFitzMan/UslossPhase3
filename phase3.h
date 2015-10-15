@@ -5,7 +5,7 @@
 #ifndef _PHASE3_H
 #define _PHASE3_H
 
-#define DEBUG3 0
+#define DEBUG3 			1
 
 #define MAXSEMS         200
 

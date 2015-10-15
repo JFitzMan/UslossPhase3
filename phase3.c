@@ -2,15 +2,17 @@
 #include <phase1.h>
 #include <phase2.h>
 #include <phase3.h>
+#include <libuser.c>
 #include <usyscall.h>
 
 /* -------------------------- Globals ------------------------------------- */ 
 
-int debugflag3 = 0;
+int debugflag3 = 1;
 
 //system vec array
 void (*sys_vec[MAXSYSCALLS])(systemArgs *args);
 //process table
+procPtr processTable[MAXPROC];
 
 
 int start2(char *arg)
@@ -19,7 +21,7 @@ int start2(char *arg)
     int status;
 
     if (DEBUG3 && debugflag3)
-        USLOSS_Console("start1(): at beginning\n");
+        USLOSS_Console("start2(): at beginning\n");
     /*
      * Check kernel mode here.
      */
@@ -28,6 +30,9 @@ int start2(char *arg)
      * Data structure initialization as needed...
      * Need proc table again
      */
+    int i;
+    for(i =0; i<MAXSYSCALLS; i++)
+        sys_vec[i] = nullsys3;
 
 
     /*
