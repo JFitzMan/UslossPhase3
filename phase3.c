@@ -60,9 +60,11 @@ int start2(char *arg)
     systemCallVec[3] = spawn;
     systemCallVec[4] = wait1;
     systemCallVec[5] = terminate;
+    //again, don't know why this jump happens
     systemCallVec[16] = semCreate;
     systemCallVec[17] = semP;
     systemCallVec[18] = semV;
+    systemCallVec[19] = semFree;
     systemCallVec[20] = getTimeOfDay1;
     systemCallVec[22] = getPID;
 
@@ -848,7 +850,30 @@ int  semVReal(int semID)
     return 0;
 }
 
-extern void getPID(systemArgs *args){
+void semFree(systemArgs *args)
+{
+    if (DEBUG3 && debugflag3)
+            USLOSS_Console("semFree(): at beginning\n");
+
+    int semID = args->arg1;
+    //check to make sure semID is valid
+    if (semTable[sem].semID != semID){
+        if (DEBUG3 && debugflag3)
+            USLOSS_Console("semV(): invalid handle!\n");
+        args->arg4 = (void *) -1;
+        return;
+    }
+    args->arg4 = (void *) semFreereal(semID);
+    setToUserMode();
+
+}
+
+int semFreeReal(int semID)
+{
+
+}
+
+void getPID(systemArgs *args){
     args->arg1 = getpid();
     setToUserMode();
 

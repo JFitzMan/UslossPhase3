@@ -5,7 +5,7 @@
 #ifndef _PHASE3_H
 #define _PHASE3_H
 
-#define DEBUG3 			1
+#define DEBUG3 			0
 #define MAXSEMS         200
 
 extern int  start2 (char *);
@@ -29,6 +29,7 @@ extern void semP(systemArgs *args);
 extern int  semPReal(int semID);
 extern void semV(systemArgs *args);
 extern int  semVReal(int semID);
+extern void semFree(systemArgs *args);
 extern void getPID(systemArgs *args);
 
 
