@@ -218,7 +218,7 @@ void spawn (systemArgs *args)
         return;
     }
     //return if priority is an illegal value
-    if (priority < 3 || priority > 5){
+    if (priority < 1 || priority > 5){
         if (DEBUG3 && debugflag3)
             USLOSS_Console("spawn(): illegal value for priority! Returning\n");
         args->arg1 = (void *) -1;
@@ -302,13 +302,19 @@ int spawnReal(char *name, int (*func)(char *), char *arg,
     procTable[kpid].pid = kpid;
     procTable[kpid].start_func = func;
     procTable[kpid].name = name;
-    if(arg == NULL) procTable[kpid].arg = NULL; else strcpy(procTable[kpid].arg, arg);
+    //prevents seg fault if arg is NULL
+    if(arg == NULL) 
+        procTable[kpid].arg = NULL; 
+    else 
+        strcpy(procTable[kpid].arg, arg);
     procTable[kpid].stack_size = stack_size;
     procTable[kpid].priority = priority;
     procTable[kpid].nextChild = NULL;
     procTable[kpid].parent = &procTable[getpid()];
     procTable[kpid].parentPid = getpid();
-    procTable[kpid].privateMbox = MboxCreate(0, sizeof(int[2]));
+    //it's possible this was made alredy in spawn launch
+    if (procTable[kpid].privateMbox == -1)
+        procTable[kpid].privateMbox = MboxCreate(0, sizeof(int[2]));
 
     //add to parent's child list (via linked list traversal if needed)
     if (procTable[getpid()].nextChild != NULL){
@@ -328,6 +334,10 @@ int spawnReal(char *name, int (*func)(char *), char *arg,
     //END CRITICAL SECTION
     //release mutex box for proc table
     MboxReceive(procTable_mutex, NULL, 0);
+
+    //just in case the child had higher priority, it's stuck in spawnLaunch
+    MboxCondSend(procTable[kpid].privateMbox, NULL, 0);
+
     if (DEBUG3 && debugflag3)
             USLOSS_Console("spawnReal(): added new process to the procTable\n");
 
@@ -345,6 +355,13 @@ int spawnLaunch()
     if (DEBUG3 && debugflag3)
             USLOSS_Console("spawnLaunch(): at beginning\n");
 
+    //create the mailbox and block so that spawnReal can finish making the proc table before moving on!
+    if (procTable[getpid()].pid != getpid()){
+        procTable[getpid()].privateMbox = MboxCreate(0, sizeof(int[2]));
+        if (DEBUG3 && debugflag3)
+            USLOSS_Console("spawnLaunch(): finishing process table creation\n");
+        MboxReceive(procTable[getpid()].privateMbox, 0, 0);
+    }
     //switch to user mode
     //The idea here is to shift off the current mode bit and bring it
     //back in as 0
@@ -374,6 +391,8 @@ void wait1(systemArgs *args)
     //set output in args
     args->arg1 = (void *) kpid;
     args->arg2 = (void *) status;
+    if (DEBUG3 && debugflag3)
+            USLOSS_Console("wait1(): a child terminated, returning\n");
     setToUserMode();
 
 
@@ -389,13 +408,16 @@ int wait1Real(int * status)
     //                  [kpid to return, status to assign]
     int result [] = {-1, -1};
 
+    //modify status
     MboxSend(procTable_mutex, NULL, 0);
     procTable[getpid()].status = WAIT_BLOCKED;
     MboxReceive(procTable_mutex, NULL, 0);
 
+    //block
     MboxReceive(procTable[getpid()].privateMbox, result, sizeof(int[2]));
 
     //process has been woken up by send of terminating child
+    //get in synch with child and wait until child completely quits
     zap(result[0]);
 
     if (DEBUG3 && debugflag3)
@@ -447,11 +469,6 @@ void terminate (systemArgs *args)
     cleanProcSlot(getpid());
     //dumpProc();
     quit(termCode);
-}
-
-void terminateReal(termCode)
-{
-
 }
 
 //DO NOT CALL WITHOUT MUTEX CHECKED OUT

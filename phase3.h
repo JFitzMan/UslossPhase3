@@ -22,7 +22,6 @@ extern int 	spawnLaunch();
 extern void wait1(systemArgs *args);
 extern int 	wait1Real(int * status);
 extern void terminate(systemArgs *args);
-extern void	terminateReal();
 
 
 
