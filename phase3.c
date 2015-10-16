@@ -857,20 +857,28 @@ void semFree(systemArgs *args)
 
     int semID = args->arg1;
     //check to make sure semID is valid
-    if (semTable[sem].semID != semID){
+    if (semTable[semID].semID != semID){
         if (DEBUG3 && debugflag3)
             USLOSS_Console("semV(): invalid handle!\n");
         args->arg4 = (void *) -1;
         return;
     }
-    args->arg4 = (void *) semFreereal(semID);
+    args->arg4 = (void *) semFreeReal(semID);
     setToUserMode();
 
 }
 
 int semFreeReal(int semID)
 {
-
+    //if there are no blocked procs
+    if (semTable[semID].nextBlockedProc == NULL){
+        semTable[semID].value = -1;
+        semTable[semID].semID = -1;
+        return 0;
+    }
+    else{
+        return 0;
+    }
 }
 
 void getPID(systemArgs *args){

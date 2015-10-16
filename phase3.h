@@ -30,6 +30,7 @@ extern int  semPReal(int semID);
 extern void semV(systemArgs *args);
 extern int  semVReal(int semID);
 extern void semFree(systemArgs *args);
+extern int 	semFreeReal (int semID);
 extern void getPID(systemArgs *args);
 
 
