@@ -69,22 +69,6 @@ int start2(char *arg)
     systemCallVec[21] = cpuTime;
     systemCallVec[22] = getPID;
 
-    /*
-    Still need to create these functions
-
-    sys_vec[2] = wait;
-    sys_vec[3] = terminate;
-    sys_vec[4] = semCreate;
-    sys_vec[5] = semP;
-    sys_vec[6] = semV;
-    sys_vec[7] = semFree;
-    sys_vec[8] = getTimeofDay;
-    sys_vec[9] = cpuTime;
-    sys_vec[10] = getPID;
-
-    */
-
-    
     MboxSend(procTable_mutex, NULL, 0);
 
     //inititalize process table
