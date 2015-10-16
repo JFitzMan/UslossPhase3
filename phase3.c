@@ -277,7 +277,7 @@ void spawn (systemArgs *args)
 *   table
 *
 *   Side Effects: Saves values of func and arg in next_func and next_arg
-*   to be used in spawnLaunch. 
+*   to be used in spawnLaunch. Also creates process table entry
 */
 int spawnReal(char *name, int (*func)(char *), char *arg, 
     int stack_size, int priority)
@@ -349,7 +349,13 @@ int spawnReal(char *name, int (*func)(char *), char *arg,
 
 }
 
-//spawn launch won't actually return, but it fixes a warning if it returns int
+/*
+*   spawnLaunch will wait until spawnReal finishes the proc table entry
+*   Then it will switch to usermode and begin executing the new process
+*
+*   If the new process returns without calling terminate, spawnlaunch will
+*   make the call itself.
+*/
 int spawnLaunch()
 {
     if (DEBUG3 && debugflag3)
@@ -373,10 +379,16 @@ int spawnLaunch()
     int result = next_func(next_arg);
 
     //terminate proc when/if it gets here, may term itself before this
-    USLOSS_Halt(1);
+    Terminate(1);
 
 }
-
+/*
+*   wait1 first makes sure that the process actually has children
+*   Then it calls wait real
+*
+*   When waitReal returns, it assigns the args to the sysargs and sets
+*   the proc to user mode
+*/
 void wait1(systemArgs *args)
 {
     if (DEBUG3 && debugflag3)
@@ -398,6 +410,12 @@ void wait1(systemArgs *args)
 
 }
 
+/*
+*   wait real switches the process's status to wait_blocked, then recieves
+*   on its private box, essentially blocking itseldf
+*
+*   When it wakes up, it changes its status, and returns the proper results
+*/
 int wait1Real(int * status)
 {
     if (DEBUG3 && debugflag3)
@@ -433,6 +451,17 @@ int wait1Real(int * status)
     return result[0];
 
 }
+
+/*
+*   terminate extracts the termination code, and since it doesnt return,
+*   doesn't really need to make a seperate call to any "termReal" or anything
+*  
+*   Terminate then checks if the process has any children
+*   If it doesnt:
+*       It checks to see if there is a waitblocked parent
+*           If there is it wakes up the parent
+    Then it cleans the process table and calls quit.
+*/
 
 void terminate (systemArgs *args)
 {
