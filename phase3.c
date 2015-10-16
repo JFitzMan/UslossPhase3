@@ -9,7 +9,7 @@
 #include <string.h>
 /* -------------------------- Globals ------------------------------------- */ 
 
-int debugflag3 = 1;
+int debugflag3 = 0;
 
 //sysvec array
 //void (*sys_vec[MAXSYSCALLS])(systemArgs *args);
@@ -18,6 +18,7 @@ int debugflag3 = 1;
 struct procSlot procTable[MAXPROC];
 //process table editing mailbox
 int procTable_mutex;
+int semTable_mutex;
 //table of semaphores
 struct semaphore semTable[MAXSEMS];
 //next function ptr for spawnLaunch to execute
@@ -42,6 +43,7 @@ int start2(char *arg)
 
     //initialize mailboxes
     procTable_mutex = MboxCreate(1, 0);
+    semTable_mutex = MboxCreate(1, 0);
 
     /*
      * Data structure initialization as needed...
@@ -128,6 +130,7 @@ int start2(char *arg)
     for(i = 0; i < MAXSEMS; i++){
         semTable[i].value = -1;
         semTable[i].nextBlockedProc = NULL;
+        semTable[i].semID = -1;
     }
 
     if (DEBUG3 && debugflag3)
@@ -680,14 +683,44 @@ void semCreate(systemArgs *arg)
         arg->arg4 = -1;
     }
 
-    arg->arg4 = semCreateReal(handle);
+    int sem = semCreateReal(handle);
+    arg->arg1 = sem; 
+    if (sem == -1)
+        arg->arg4 = -1;
+    else
+        arg->arg4 = 0;
     
 }
 
-struct semaphore* semCreateReal(int initial_value)
+int semCreateReal(int initial_value)
 {
     if (DEBUG3 && debugflag3)
             USLOSS_Console("semCreateReal(): at beginning\n");
+    int i;
+    //find the next free semaphore
+    int newSemID = -1;
+    for(i = 0; i < MAXSEMS; i++){
+        //grab the id of the first open slot
+        if (semTable[i].semID == -1){
+            newSemID = i;
+            break;
+        }
+    }
+
+    //check to see if there were any free slots
+    if (newSemID == -1){
+        if (DEBUG3 && debugflag3)
+            USLOSS_Console("semCreateReal(): No more semaphores\n");
+        return newSemID;
+    }
+    //set initital value and return
+    MboxSend(semTable_mutex, NULL, 0);
+    semTable[newSemID].value = initial_value;
+    semTable[newSemID].semID = newSemID;
+    MboxReceive(semTable_mutex, NULL, 0);
+    if (DEBUG3 && debugflag3)
+            USLOSS_Console("semCreateReal(): returning sem with ID %d\n", newSemID);
+    return newSemID;
 
 }
 
