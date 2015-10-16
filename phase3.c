@@ -62,6 +62,7 @@ int start2(char *arg)
     systemCallVec[5] = terminate;
     systemCallVec[16] = semCreate;
     systemCallVec[17] = semP;
+    systemCallVec[18] = semV;
     systemCallVec[20] = getTimeOfDay1;
 
     /*
@@ -97,6 +98,7 @@ int start2(char *arg)
         procTable[i].privateMbox = -1;
         procTable[i].termCode = -1;
         procTable[i].status = -1;
+        procTable[i].nextProc = NULL;
     }
     //proc table setup, in case we fdo a dump_proc later
     procTable[1].name = "sentinel";
@@ -685,11 +687,11 @@ void semCreate(systemArgs *arg)
     }
 
     int sem = semCreateReal(handle);
-    arg->arg1 = sem; 
+    arg->arg1 = (void *) sem; 
     if (sem == -1)
-        arg->arg4 = -1;
+        arg->arg4 = (void *) -1;
     else
-        arg->arg4 = 0;
+        arg->arg4 = (void *) 0;
     
 }
 
@@ -727,20 +729,87 @@ int semCreateReal(int initial_value)
 
 void semP(systemArgs *args)
 {
-
+    if (DEBUG3 && debugflag3)
+            USLOSS_Console("semP(): at beginning\n");
+    int sem = args->arg1;
+    //check for valid handle
+    if (semTable[sem].semID != sem){
+        if (DEBUG3 && debugflag3)
+            USLOSS_Console("semP(): invalid handle!\n");
+        args->arg4 = (void *) -1;
+        return;
+    }
+    args->arg4 = (void *) semPReal(sem);
 }
-int  semPReal()
-{
 
+int  semPReal(int semID)
+{
+    if (DEBUG3 && debugflag3)
+            USLOSS_Console("semPReal(): at beginning\n");
+    MboxSend(semTable_mutex, NULL, 0);
+    //if value is positive
+    if (semTable[semID].value > 0){
+        if (DEBUG3 && debugflag3)
+            USLOSS_Console("semPReal(): value positive, decrementing\n");
+        semTable[semID].value--;
+        MboxReceive(semTable_mutex, NULL, 0);
+        return 0;
+    }
+    //value is negative, block
+    else{
+        if (DEBUG3 && debugflag3)
+            USLOSS_Console("semPReal(): value negative, blocking\n");
+        if (semTable[semID].nextBlockedProc != NULL){
+        //there are other procs in the list, add to end
+        procPtr cur =  semTable[semID].nextBlockedProc;
+        while (cur->nextProc != NULL){
+            cur = cur->nextProc;
+        }
+        //cur now points to last sib in the list
+        cur->nextProc = &procTable[getpid()];
+        MboxReceive(semTable_mutex, NULL, 0);
+        MboxReceive(procTable[getpid()].privateMbox, 0, 0);
+
+    }else{
+        //this is the semaphores first blocked process
+        semTable[semID].nextBlockedProc = &procTable[getpid()];
+        MboxReceive(semTable_mutex, NULL, 0);
+        MboxReceive(procTable[getpid()].privateMbox, 0, 0);
+    }
+    }
+    return 0;
 }
 
 void semV(systemArgs *args)
 {
-
+    if (DEBUG3 && debugflag3)
+            USLOSS_Console("semV(): at beginning\n");
+    int sem = args->arg1;
+    //check for valid handle
+    if (semTable[sem].semID != sem){
+        if (DEBUG3 && debugflag3)
+            USLOSS_Console("semV(): invalid handle!\n");
+        args->arg4 = (void *) -1;
+        return;
+    }
+    args->arg4 = (void *) semVReal(sem);
 }
-int  semVReal()
-{
 
+int  semVReal(int semID)
+{
+    if (DEBUG3 && debugflag3)
+            USLOSS_Console("semVReal(): at beginning\n");
+
+    //check for blocked procs that could be woken up
+    if (semTable[semID].nextBlockedProc != NULL){
+        MboxSend(semTable[semID].nextBlockedProc->privateMbox, 0, 0);
+        return 0;
+    }
+
+    MboxSend(semTable_mutex, NULL, 0);
+    semTable[semID].value++;
+    MboxReceive(semTable_mutex, NULL, 0);
+    return 0;
 }
 
 

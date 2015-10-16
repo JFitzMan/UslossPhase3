@@ -26,7 +26,9 @@ extern void getTimeOfDay1(systemArgs *args);
 extern void semCreate(systemArgs *args);
 extern int  semCreateReal(int initial_value);
 extern void semP(systemArgs *args);
-extern int  semPReal();
+extern int  semPReal(int semID);
+extern void semV(systemArgs *args);
+extern int  semVReal(int semID);
 
 
 
@@ -45,6 +47,7 @@ struct procSlot {
 	procPtr		nextChild;
 	procPtr		nextSib;
 	procPtr		parent;
+	procPtr		nextProc;
 	int			privateMbox;
 	int			termCode;
 
