@@ -9,7 +9,7 @@
 #include <string.h>
 /* -------------------------- Globals ------------------------------------- */ 
 
-int debugflag3 = 0;
+int debugflag3 = 1;
 
 //sysvec array
 //void (*sys_vec[MAXSYSCALLS])(systemArgs *args);
@@ -18,6 +18,8 @@ int debugflag3 = 0;
 struct procSlot procTable[MAXPROC];
 //process table editing mailbox
 int procTable_mutex;
+//table of semaphores
+struct semaphore semTable[MAXSEMS];
 //next function ptr for spawnLaunch to execute
 int (*next_func)(char *);
 char * next_arg[MAXARG];
@@ -56,6 +58,7 @@ int start2(char *arg)
     systemCallVec[3] = spawn;
     systemCallVec[4] = wait1;
     systemCallVec[5] = terminate;
+    systemCallVec[16] = semCreate;
     systemCallVec[20] = getTimeOfDay1;
 
     /*
@@ -120,6 +123,12 @@ int start2(char *arg)
     procTable[getpid()].termCode = -1;
 
     MboxReceive(procTable_mutex, NULL, 0);
+
+    //inititalize semTable
+    for(i = 0; i < MAXSEMS; i++){
+        semTable[i].value = -1;
+        semTable[i].nextBlockedProc = NULL;
+    }
 
     if (DEBUG3 && debugflag3)
         USLOSS_Console("start2(): data structures initialized\n");
@@ -500,7 +509,14 @@ int wait1Real(int * status)
 *       It checks to see if there is a running parent
 *           Become a zombie
     If it does:
-        It checks to see if they are zombies, and if they are, then it releases them
+        It cycles through each one, releasing zombies and zapping kids
+
+        It checks to see if there is a waitblocked parent
+*           If there is it wakes up the parent
+*
+*       It checks to see if there is a running parent
+*           Become a zombie
+
     Then it cleans the process table and calls quit.
 */
 
@@ -573,6 +589,16 @@ void terminate (systemArgs *args)
             int message [] = {getpid(), termCode}; //build message
             MboxSend( procTable[procTable[getpid()].parent->pid].privateMbox, message, sizeof(message));
         }
+        //If the parent hasn't called wait, block as a zombie before quitting
+        else if(procTable[getpid()].parent->status == READY){
+            //set status to zombie
+            procTable[getpid()].status = ZOMBIE;
+            //block on private mailbox, release mutex first
+            if (DEBUG3 && debugflag3)
+                USLOSS_Console("terminate(): terminating process's parent hasn't waited! Zombie time!\n");
+            int message [] = {getpid(), termCode};
+            MboxSend(procTable[getpid()].privateMbox, message, sizeof(message));
+        }
     }
 
     if (DEBUG3 && debugflag3)
@@ -642,6 +668,27 @@ void getTimeOfDay1(systemArgs *args)
     if (DEBUG3 && debugflag3)
             USLOSS_Console("getTimeOfDay1(): at beginning\n");
     args->arg1 = (void *) USLOSS_Clock();
+}
+
+void semCreate(systemArgs *arg)
+{
+    int handle = arg->arg1;
+
+    //check to see if handle is valid
+    if (handle < 0){
+        USLOSS_Console("semCreate(): invalid handle!");
+        arg->arg4 = -1;
+    }
+
+    arg->arg4 = semCreateReal(handle);
+    
+}
+
+struct semaphore* semCreateReal(int initial_value)
+{
+    if (DEBUG3 && debugflag3)
+            USLOSS_Console("semCreateReal(): at beginning\n");
+
 }
 
 

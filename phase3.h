@@ -23,6 +23,8 @@ extern void wait1(systemArgs *args);
 extern int 	wait1Real(int * status);
 extern void terminate(systemArgs *args);
 extern void getTimeOfDay1(systemArgs *args);
+extern void semCreate(systemArgs *args);
+extern struct semaphore* semCreateReal(int initial_value);
 
 
 
@@ -45,6 +47,10 @@ struct procSlot {
 	int			termCode;
 
 };
+
+struct sem {
+	int		value;
+}; 
 
 struct semaphore {
 	int 		value;
