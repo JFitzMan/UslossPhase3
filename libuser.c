@@ -19,7 +19,7 @@
 	}						\
 }
 
-int debugflaglib3 = 1;
+int debugflaglib3 = 0;
 
 
 

@@ -12,6 +12,8 @@ extern int  start2 (char *);
 extern int 	start3 (char *);
 extern int 	inKernelMode(char *procName);
 extern void	setToUserMode();
+extern void cleanProcSlot(int pid);
+extern void dumpProc();
 extern int 	start2(char *arg);
 extern void spawn(systemArgs *args);
 extern int 	spawnReal(char *name, int (*func)(char *), char *arg, 
@@ -19,6 +21,9 @@ extern int 	spawnReal(char *name, int (*func)(char *), char *arg,
 extern int 	spawnLaunch();
 extern void wait1(systemArgs *args);
 extern int 	wait1Real(int * status);
+extern void terminate(systemArgs *args);
+extern void	terminateReal();
+
 
 
 typedef struct procSlot *procPtr;
@@ -47,6 +52,8 @@ struct semaphore {
 };
 
 #define READY 	0
+#define WAIT_BLOCKED 1
+#define JOIN_BLOCKED 11
 
 #endif /* _PHASE3_H */
 

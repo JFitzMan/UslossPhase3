@@ -9,7 +9,7 @@
 #include <string.h>
 /* -------------------------- Globals ------------------------------------- */ 
 
-int debugflag3 = 1;
+int debugflag3 = 0;
 
 //sysvec array
 //void (*sys_vec[MAXSYSCALLS])(systemArgs *args);
@@ -55,6 +55,7 @@ int start2(char *arg)
     //no idea why spawn_num is set to 3, other syscalls being used?
     systemCallVec[3] = spawn;
     systemCallVec[4] = wait1;
+    systemCallVec[5] = terminate;
 
     /*
     Still need to create these functions
@@ -93,8 +94,13 @@ int start2(char *arg)
     //proc table setup, in case we fdo a dump_proc later
     procTable[1].name = "sentinel";
     procTable[1].priority = 6;
+    procTable[1].pid = 1;
+    procTable[1].status = READY;
     procTable[2].name = "start1";
     procTable[2].priority = 1;
+    procTable[2].pid = 2;
+    procTable[2].status = JOIN_BLOCKED;
+
 
 
     //get start2 entry completely set up, will be important for spawnReal  
@@ -304,7 +310,7 @@ int spawnReal(char *name, int (*func)(char *), char *arg,
     procTable[kpid].parentPid = getpid();
     procTable[kpid].privateMbox = MboxCreate(0, sizeof(int[2]));
 
-    //add to parent's child list
+    //add to parent's child list (via linked list traversal if needed)
     if (procTable[getpid()].nextChild != NULL){
         //there are other children in the list, add to end
         procPtr cur = procTable[getpid()].nextChild;
@@ -380,13 +386,120 @@ int wait1Real(int * status)
     //getting here means it just needs to wait to be woken up
 
     //this array contains [ -1, -1], and will be the result of the recieve
+    //                  [kpid to return, status to assign]
     int result [] = {-1, -1};
+
+    MboxSend(procTable_mutex, NULL, 0);
+    procTable[getpid()].status = WAIT_BLOCKED;
+    MboxReceive(procTable_mutex, NULL, 0);
+
     MboxReceive(procTable[getpid()].privateMbox, result, sizeof(int[2]));
 
     //process has been woken up by send of terminating child
+    zap(result[0]);
+
+    if (DEBUG3 && debugflag3)
+            USLOSS_Console("wait1Real(): process is waking up from wait block\n");
+
+    MboxSend(procTable_mutex, NULL, 0);
+    procTable[getpid()].status = READY;
+    MboxReceive(procTable_mutex, NULL, 0);
+
+    *status = result[1];
+    if (DEBUG3 && debugflag3)
+            USLOSS_Console("wait1Real(): Returning\n");
+    return result[0];
 
 }
 
+void terminate (systemArgs *args)
+{
+    if (DEBUG3 && debugflag3)
+            USLOSS_Console("terminate(): at beginning\n");
+    //extract arg1, the termination code
+    int termCode = (int) args->arg1;
+
+    //going to be reading proc table, don't want anyone to touch
+    if (DEBUG3 && debugflag3)
+            USLOSS_Console("terminate(): sending to procTable_mutex\n");
+    //MboxSend(procTable_mutex, NULL, 0);
+
+    //if there isn't any children
+    if (procTable[getpid()].nextChild == NULL){
+        if (DEBUG3 && debugflag3)
+            USLOSS_Console("terminate(): terminating process has no children\n");
+        //if the parent is wait blocked, wake it up
+        if (procTable[getpid()].parent->status == WAIT_BLOCKED){
+            if (DEBUG3 && debugflag3)
+            USLOSS_Console("terminate(): terminating process's parent is wait blocked!\n");
+            int message [] = {getpid(), termCode}; //build message
+            MboxSend( procTable[procTable[getpid()].parent->pid].privateMbox, message, sizeof(message));
+        }
+    }
+    //MboxReceive(procTable_mutex, NULL, 0);
+    if (DEBUG3 && debugflag3)
+            USLOSS_Console("terminate(): calling quit after cleaning the proc table\n");
+
+    if ( procTable[getpid()].nextSib == NULL )
+        procTable[getpid()].parent->nextChild = NULL;
+    else
+        procTable[getpid()].parent->nextChild = procTable[getpid()].nextSib;
+    cleanProcSlot(getpid());
+    //dumpProc();
+    quit(termCode);
+}
+
+void terminateReal(termCode)
+{
+
+}
+
+//DO NOT CALL WITHOUT MUTEX CHECKED OUT
+void cleanProcSlot(int i)
+{
+    procTable[i].pid = -1;
+    procTable[i].parentPid = -1;
+    procTable[i].nextChild = NULL;
+    procTable[i].nextSib = NULL;
+    procTable[i].parent = NULL;
+    procTable[i].priority = -1;
+    procTable[i].start_func = NULL;
+    procTable[i].name = NULL;
+    procTable[i].arg = NULL;
+    procTable[i].stack_size = -1;
+    procTable[i].privateMbox = -1;
+    procTable[i].termCode = -1;
+    procTable[i].status = -1;
+}
+
+/*
+ * Displays the current processes in the process table and any relevant information
+ */
+void dumpProc(){
+    USLOSS_Console("\n   NAME   |   PID   |   PRIORITY   |  STATUS   |   PPID   |\n");
+    USLOSS_Console("-----------------------------------------------------------------------------------\n");
+    int i;
+    for(i = 0; i < 6; i++){
+        USLOSS_Console(" %-9s| %-8d| %-13d|", procTable[i].name, procTable[i].pid, procTable[i].priority);
+        switch(procTable[i].status){
+            case READY:
+                USLOSS_Console(" READY     ");
+                break;
+            case WAIT_BLOCKED:
+                USLOSS_Console(" WBLOCKED  ");
+                break;
+            case JOIN_BLOCKED:
+                USLOSS_Console(" JBLOCKED  ");
+                break;
+            default:
+                USLOSS_Console("           ");
+        }
+        USLOSS_Console("| %-9d| %-12d| %-8d|\n", procTable[i].parentPid);
+        USLOSS_Console("-----------------------------------------------------------------------------------\n");
+    }
+    
+    USLOSS_Console("\n");
+}
 
 
 
