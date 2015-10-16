@@ -22,6 +22,7 @@ extern int 	spawnLaunch();
 extern void wait1(systemArgs *args);
 extern int 	wait1Real(int * status);
 extern void terminate(systemArgs *args);
+extern void getTimeOfDay1(systemArgs *args);
 
 
 
@@ -52,6 +53,7 @@ struct semaphore {
 
 #define READY 	0
 #define WAIT_BLOCKED 1
+#define ZOMBIE		 2
 #define JOIN_BLOCKED 11
 
 #endif /* _PHASE3_H */

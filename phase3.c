@@ -20,7 +20,7 @@ struct procSlot procTable[MAXPROC];
 int procTable_mutex;
 //next function ptr for spawnLaunch to execute
 int (*next_func)(char *);
-char * next_arg;
+char * next_arg[MAXARG];
 
 
 
@@ -56,6 +56,7 @@ int start2(char *arg)
     systemCallVec[3] = spawn;
     systemCallVec[4] = wait1;
     systemCallVec[5] = terminate;
+    systemCallVec[20] = getTimeOfDay1;
 
     /*
     Still need to create these functions
@@ -288,7 +289,22 @@ int spawnReal(char *name, int (*func)(char *), char *arg,
 
     //get values needed by spawn launch to globals so it can launch
     next_func = func;
-    if(arg == NULL) next_arg = NULL; else strcpy(next_arg, arg);
+    if(arg == NULL) {
+        int i;
+        for (i = 0; i < MAXARG; i++)
+            next_arg[i] = '\0';
+    }
+    else {
+        if (DEBUG3 && debugflag3)
+            USLOSS_Console("spawnReal(): there is an argument to set\n");
+        int i;
+        for (i = 0; i < MAXARG; i++)
+            next_arg[i] = '\0';
+
+        strcpy(next_arg, arg);
+        if (DEBUG3 && debugflag3)
+            USLOSS_Console("spawnReal(): arg saved\n");
+    }
 
     //create new process
     kpid = fork1(name, spawnLaunch, arg, stack_size, priority);
@@ -302,11 +318,15 @@ int spawnReal(char *name, int (*func)(char *), char *arg,
     procTable[kpid].pid = kpid;
     procTable[kpid].start_func = func;
     procTable[kpid].name = name;
+    procTable[kpid].status = READY;
     //prevents seg fault if arg is NULL
     if(arg == NULL) 
         procTable[kpid].arg = NULL; 
-    else 
-        strcpy(procTable[kpid].arg, arg);
+    else {
+        procTable[kpid].arg = next_arg;
+        //USLOSS_Console("%s\n", arg);
+        //strcpy(procTable[kpid].arg, arg);
+    }
     procTable[kpid].stack_size = stack_size;
     procTable[kpid].priority = priority;
     procTable[kpid].nextChild = NULL;
@@ -426,6 +446,22 @@ int wait1Real(int * status)
     //                  [kpid to return, status to assign]
     int result [] = {-1, -1};
 
+    //check to see if there are any zombie kids before blocking!
+    if (procTable[getpid()].nextChild != NULL){
+
+        procPtr cur = procTable[getpid()].nextChild;
+        while (cur != NULL){
+            if (cur->status == ZOMBIE){
+                MboxReceive(cur->privateMbox, result, sizeof(int[2]));
+                *status = result[1];
+                if (DEBUG3 && debugflag3)
+                   USLOSS_Console("wait1Real(): Zombie child! Returning\n");
+                return result[0];
+            }
+           cur = cur->nextSib;
+        }
+    }  
+
     //modify status
     MboxSend(procTable_mutex, NULL, 0);
     procTable[getpid()].status = WAIT_BLOCKED;
@@ -460,6 +496,11 @@ int wait1Real(int * status)
 *   If it doesnt:
 *       It checks to see if there is a waitblocked parent
 *           If there is it wakes up the parent
+*
+*       It checks to see if there is a running parent
+*           Become a zombie
+    If it does:
+        It checks to see if they are zombies, and if they are, then it releases them
     Then it cleans the process table and calls quit.
 */
 
@@ -473,7 +514,7 @@ void terminate (systemArgs *args)
     //going to be reading proc table, don't want anyone to touch
     if (DEBUG3 && debugflag3)
             USLOSS_Console("terminate(): sending to procTable_mutex\n");
-    //MboxSend(procTable_mutex, NULL, 0);
+    MboxSend(procTable_mutex, NULL, 0);
 
     //if there isn't any children
     if (procTable[getpid()].nextChild == NULL){
@@ -482,21 +523,70 @@ void terminate (systemArgs *args)
         //if the parent is wait blocked, wake it up
         if (procTable[getpid()].parent->status == WAIT_BLOCKED){
             if (DEBUG3 && debugflag3)
-            USLOSS_Console("terminate(): terminating process's parent is wait blocked!\n");
+                USLOSS_Console("terminate(): terminating process's parent is wait blocked!\n");
+            int message [] = {getpid(), termCode}; //build message
+            MboxSend( procTable[procTable[getpid()].parent->pid].privateMbox, message, sizeof(message));
+            MboxReceive(procTable_mutex, NULL, 0);
+        }
+        //If the parent hasn't called wait, block as a zombie before quitting
+        else if(procTable[getpid()].parent->status == READY){
+            //set status to zombie
+            procTable[getpid()].status = ZOMBIE;
+            //block on private mailbox, release mutex first
+            MboxReceive(procTable_mutex, NULL, 0);
+            if (DEBUG3 && debugflag3)
+                USLOSS_Console("terminate(): terminating process's parent hasn't waited! Zombie time!\n");
+            int message [] = {getpid(), termCode};
+            MboxSend(procTable[getpid()].privateMbox, message, sizeof(message));
+        }
+    }
+    else{
+        if (DEBUG3 && debugflag3)
+            USLOSS_Console("terminate(): terminating process has children. Slay them.\n");
+        procPtr cur = procTable[getpid()].nextChild;
+        procPtr next = NULL;
+        //walk down all silblings
+        MboxReceive(procTable_mutex, NULL, 0);
+        while (cur != NULL){
+            //next is the handle to the next one to grab
+            if (cur->nextSib == NULL)
+                next = NULL;
+            else
+                next = cur->nextSib;
+            if (cur->status == ZOMBIE){
+                int result [] = {-1, -1};
+                if (DEBUG3 && debugflag3)
+                    USLOSS_Console("terminate(): Waking up zombie\n");
+                MboxReceive(cur->privateMbox, result, sizeof(int[2]));
+            }
+            else{
+                if (DEBUG3 && debugflag3)
+                    USLOSS_Console("terminate(): zapping a running child\n");
+                zap(cur->pid);
+            }   
+            cur = next;
+        }
+        //if the parent is wait blocked, wake it up
+        if (procTable[getpid()].parent->status == WAIT_BLOCKED){
+            if (DEBUG3 && debugflag3)
+                USLOSS_Console("terminate(): terminating process's parent is wait blocked!\n");
             int message [] = {getpid(), termCode}; //build message
             MboxSend( procTable[procTable[getpid()].parent->pid].privateMbox, message, sizeof(message));
         }
     }
-    //MboxReceive(procTable_mutex, NULL, 0);
-    if (DEBUG3 && debugflag3)
-            USLOSS_Console("terminate(): calling quit after cleaning the proc table\n");
 
+    if (DEBUG3 && debugflag3)
+            USLOSS_Console("terminate(): %s calling quit after cleaning the proc table\n", procTable[getpid()].name);
+    MboxSend(procTable_mutex, NULL, 0);
     if ( procTable[getpid()].nextSib == NULL )
         procTable[getpid()].parent->nextChild = NULL;
     else
         procTable[getpid()].parent->nextChild = procTable[getpid()].nextSib;
     cleanProcSlot(getpid());
+    MboxReceive(procTable_mutex, NULL, 0);
     //dumpProc();
+    if (DEBUG3 && debugflag3)
+            USLOSS_Console("terminate(): at the end\n");
     quit(termCode);
 }
 
@@ -545,6 +635,13 @@ void dumpProc(){
     }
     
     USLOSS_Console("\n");
+}
+
+void getTimeOfDay1(systemArgs *args)
+{
+    if (DEBUG3 && debugflag3)
+            USLOSS_Console("getTimeOfDay1(): at beginning\n");
+    args->arg1 = (void *) USLOSS_Clock();
 }
 
 
