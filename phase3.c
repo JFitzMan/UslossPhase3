@@ -61,6 +61,7 @@ int start2(char *arg)
     systemCallVec[4] = wait1;
     systemCallVec[5] = terminate;
     systemCallVec[16] = semCreate;
+    systemCallVec[17] = semP;
     systemCallVec[20] = getTimeOfDay1;
 
     /*
@@ -724,6 +725,23 @@ int semCreateReal(int initial_value)
 
 }
 
+void semP(systemArgs *args)
+{
+
+}
+int  semPReal()
+{
+
+}
+
+void semV(systemArgs *args)
+{
+
+}
+int  semVReal()
+{
+
+}
 
 
 

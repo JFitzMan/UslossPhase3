@@ -25,6 +25,8 @@ extern void terminate(systemArgs *args);
 extern void getTimeOfDay1(systemArgs *args);
 extern void semCreate(systemArgs *args);
 extern int  semCreateReal(int initial_value);
+extern void semP(systemArgs *args);
+extern int  semPReal();
 
 
 
