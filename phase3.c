@@ -64,6 +64,7 @@ int start2(char *arg)
     systemCallVec[17] = semP;
     systemCallVec[18] = semV;
     systemCallVec[20] = getTimeOfDay1;
+    systemCallVec[22] = getPID;
 
     /*
     Still need to create these functions
@@ -340,6 +341,8 @@ int spawnReal(char *name, int (*func)(char *), char *arg,
     else {
         procTable[kpid].arg = next_arg;
         //USLOSS_Console("%s\n", arg);
+        if (DEBUG3 && debugflag3)
+            USLOSS_Console("spawnReal(): copied arg over, arg: %s\n", procTable[kpid].arg);
         //strcpy(procTable[kpid].arg, arg);
     }
     procTable[kpid].stack_size = stack_size;
@@ -408,13 +411,24 @@ int spawnLaunch()
     //back in as 0
     setToUserMode();
 
-    if (DEBUG3 && debugflag3)
+    if (DEBUG3 && debugflag3){
             USLOSS_Console("spawnLaunch(): PRS set to user mode\n");
-
-    int result = next_func(next_arg);
+            USLOSS_Console("procTable[getpid()].arg:%s\n", procTable[getpid()].arg);
+    }
+    char argument [MAXARG];
+    if (procTable[getpid()].arg != NULL){
+        int i;
+        for (int i = 0; i < MAXARG; i++){
+            argument[i] = '\0';
+        }
+        for (int i = 0; i < strlen(procTable[getpid()].arg); i++){
+            argument[i] = procTable[getpid()].arg[i];
+        }
+    }   
+    int result = procTable[getpid()].start_func(argument);
 
     //terminate proc when/if it gets here, may term itself before this
-    Terminate(1);
+    Terminate(result);
 
 }
 /*
@@ -674,6 +688,7 @@ void getTimeOfDay1(systemArgs *args)
     if (DEBUG3 && debugflag3)
             USLOSS_Console("getTimeOfDay1(): at beginning\n");
     args->arg1 = (void *) USLOSS_Clock();
+    setToUserMode();
 }
 
 void semCreate(systemArgs *arg)
@@ -692,6 +707,7 @@ void semCreate(systemArgs *arg)
         arg->arg4 = (void *) -1;
     else
         arg->arg4 = (void *) 0;
+    setToUserMode();
     
 }
 
@@ -740,6 +756,7 @@ void semP(systemArgs *args)
         return;
     }
     args->arg4 = (void *) semPReal(sem);
+    setToUserMode();
 }
 
 int  semPReal(int semID)
@@ -760,22 +777,29 @@ int  semPReal(int semID)
         if (DEBUG3 && debugflag3)
             USLOSS_Console("semPReal(): value negative, blocking\n");
         if (semTable[semID].nextBlockedProc != NULL){
-        //there are other procs in the list, add to end
-        procPtr cur =  semTable[semID].nextBlockedProc;
-        while (cur->nextProc != NULL){
-            cur = cur->nextProc;
-        }
-        //cur now points to last sib in the list
-        cur->nextProc = &procTable[getpid()];
-        MboxReceive(semTable_mutex, NULL, 0);
-        MboxReceive(procTable[getpid()].privateMbox, 0, 0);
+            //there are other procs in the list, add to end
+            procPtr cur =  semTable[semID].nextBlockedProc;
+            while (cur->nextProc != NULL){
+                cur = cur->nextProc;
+            }
+            //cur now points to last sib in the list
+            cur->nextProc = &procTable[getpid()];
+            MboxReceive(semTable_mutex, NULL, 0);
+            if (DEBUG3 && debugflag3)
+                USLOSS_Console("semPReal(): added to end of blocked list %s\n", procTable[getpid()].arg);
+            MboxReceive(procTable[getpid()].privateMbox, 0, 0);
+            if (DEBUG3 && debugflag3)
+                USLOSS_Console("semPReal(): awoken %s\n", procTable[getpid()].arg);
 
-    }else{
-        //this is the semaphores first blocked process
-        semTable[semID].nextBlockedProc = &procTable[getpid()];
-        MboxReceive(semTable_mutex, NULL, 0);
-        MboxReceive(procTable[getpid()].privateMbox, 0, 0);
-    }
+
+        }else{
+            //this is the semaphores first blocked process
+            semTable[semID].nextBlockedProc = &procTable[getpid()];
+            MboxReceive(semTable_mutex, NULL, 0);
+            if (DEBUG3 && debugflag3)
+                USLOSS_Console("semPReal(): added to front of blocked list\n");
+            MboxReceive(procTable[getpid()].privateMbox, 0, 0);
+        }
     }
     return 0;
 }
@@ -793,6 +817,7 @@ void semV(systemArgs *args)
         return;
     }
     args->arg4 = (void *) semVReal(sem);
+    setToUserMode();
 }
 
 int  semVReal(int semID)
@@ -802,7 +827,18 @@ int  semVReal(int semID)
 
     //check for blocked procs that could be woken up
     if (semTable[semID].nextBlockedProc != NULL){
-        MboxSend(semTable[semID].nextBlockedProc->privateMbox, 0, 0);
+        if (DEBUG3 && debugflag3)
+            USLOSS_Console("semVReal(): waking up blocked proc %s\n", semTable[semID].nextBlockedProc->name);
+        //adjust blocked proc list
+
+        int mboxIDtoSend = semTable[semID].nextBlockedProc->privateMbox;
+        if (semTable[semID].nextBlockedProc->nextProc == NULL){
+            semTable[semID].nextBlockedProc = NULL;
+        }
+        else{
+            semTable[semID].nextBlockedProc = semTable[semID].nextBlockedProc->nextProc;
+        }
+        MboxSend(mboxIDtoSend, 0, 0);
         return 0;
     }
 
@@ -810,6 +846,12 @@ int  semVReal(int semID)
     semTable[semID].value++;
     MboxReceive(semTable_mutex, NULL, 0);
     return 0;
+}
+
+extern void getPID(systemArgs *args){
+    args->arg1 = getpid();
+    setToUserMode();
+
 }
 
 

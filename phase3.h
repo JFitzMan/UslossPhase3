@@ -29,7 +29,7 @@ extern void semP(systemArgs *args);
 extern int  semPReal(int semID);
 extern void semV(systemArgs *args);
 extern int  semVReal(int semID);
-
+extern void getPID(systemArgs *args);
 
 
 typedef struct procSlot *procPtr;
