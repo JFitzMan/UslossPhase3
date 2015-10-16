@@ -789,9 +789,16 @@ int  semPReal(int semID)
             MboxReceive(semTable_mutex, NULL, 0);
             if (DEBUG3 && debugflag3)
                 USLOSS_Console("semPReal(): added to end of blocked list %s\n", procTable[getpid()].arg);
-            MboxReceive(procTable[getpid()].privateMbox, 0, 0);
+            int result [] = {-2, -2};
+            MboxReceive(procTable[getpid()].privateMbox, result, sizeof(int[2]));
             if (DEBUG3 && debugflag3)
                 USLOSS_Console("semPReal(): awoken %s\n", procTable[getpid()].arg);
+            if (result[1] == -1){
+                if (DEBUG3 && debugflag3)
+                USLOSS_Console("semPReal(): sem was freed while blocked, terminating\n");
+                setToUserMode();
+                Terminate(-1);
+            }
 
 
         }else{
@@ -800,7 +807,16 @@ int  semPReal(int semID)
             MboxReceive(semTable_mutex, NULL, 0);
             if (DEBUG3 && debugflag3)
                 USLOSS_Console("semPReal(): added to front of blocked list\n");
-            MboxReceive(procTable[getpid()].privateMbox, 0, 0);
+            int result [] = {-2, -2};
+            MboxReceive(procTable[getpid()].privateMbox, result, sizeof(int[2]));
+            if (DEBUG3 && debugflag3)
+                USLOSS_Console("semPReal(): awoken %s\n", procTable[getpid()].arg);
+            if (result[1] == -1){
+                if (DEBUG3 && debugflag3)
+                USLOSS_Console("semPReal(): sem was freed while blocked, terminating\n");
+                setToUserMode();
+                Terminate(-1);
+            }
         }
     }
     return 0;
@@ -840,7 +856,8 @@ int  semVReal(int semID)
         else{
             semTable[semID].nextBlockedProc = semTable[semID].nextBlockedProc->nextProc;
         }
-        MboxSend(mboxIDtoSend, 0, 0);
+        int message = 1;
+        MboxSend(mboxIDtoSend, &message, sizeof(int));
         return 0;
     }
 
@@ -870,14 +887,33 @@ void semFree(systemArgs *args)
 
 int semFreeReal(int semID)
 {
+    if (DEBUG3 && debugflag3)
+            USLOSS_Console("semFreeReal(): at beginning\n");
     //if there are no blocked procs
     if (semTable[semID].nextBlockedProc == NULL){
+        if (DEBUG3 && debugflag3)
+            USLOSS_Console("semFreeReal(): no blocked procs! freeing sem\n");
         semTable[semID].value = -1;
         semTable[semID].semID = -1;
         return 0;
     }
     else{
-        return 0;
+        procPtr cur = semTable[semID].nextBlockedProc;
+        procPtr next;
+        while (cur != NULL){
+            if (cur->nextProc == NULL){
+                next = NULL;
+            }
+            else{
+                next = cur->nextProc;
+            }
+            int message [] = {-1, -1};
+            if (DEBUG3 && debugflag3)
+                USLOSS_Console("semFreeReal(): about to wake up sem\n");
+            MboxSend(cur->privateMbox, message, sizeof(int[2]));
+            cur = next;
+        }
+        return 1;
     }
 }
 
