@@ -32,6 +32,7 @@ extern int  semVReal(int semID);
 extern void semFree(systemArgs *args);
 extern int 	semFreeReal (int semID);
 extern void getPID(systemArgs *args);
+extern void cpuTime(systemArgs *args);
 
 
 typedef struct procSlot *procPtr;

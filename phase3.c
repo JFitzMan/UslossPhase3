@@ -66,6 +66,7 @@ int start2(char *arg)
     systemCallVec[18] = semV;
     systemCallVec[19] = semFree;
     systemCallVec[20] = getTimeOfDay1;
+    systemCallVec[21] = cpuTime;
     systemCallVec[22] = getPID;
 
     /*
@@ -921,6 +922,10 @@ void getPID(systemArgs *args){
     args->arg1 = getpid();
     setToUserMode();
 
+}
+
+void cpuTime(systemArgs *args){
+    args->arg1 = readtime();
 }
 
 
