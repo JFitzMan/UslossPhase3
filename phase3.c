@@ -782,7 +782,7 @@ int  semPReal(int semID)
                 if (DEBUG3 && debugflag3)
                 USLOSS_Console("semPReal(): sem was freed while blocked, terminating\n");
                 setToUserMode();
-                Terminate(-1);
+                Terminate(1);
             }
 
 
@@ -800,7 +800,7 @@ int  semPReal(int semID)
                 if (DEBUG3 && debugflag3)
                 USLOSS_Console("semPReal(): sem was freed while blocked, terminating\n");
                 setToUserMode();
-                Terminate(-1);
+                Terminate(1);
             }
         }
     }
