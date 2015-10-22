@@ -473,7 +473,7 @@ void wait1(systemArgs *args)
     args->arg2 = (void *) status;
     if (DEBUG3 && debugflag3)
             USLOSS_Console("wait1(): a child terminated, returning\n");
-    setToUserMode();
+    //setToUserMode();
 
 
 }
@@ -522,12 +522,13 @@ int wait1Real(int * status)
     //get in synch with child and wait until child completely quits
     zap(result[0]);
 
+
     if (DEBUG3 && debugflag3)
             USLOSS_Console("wait1Real(): process is waking up from wait block\n");
 
-    MboxSend(procTable_mutex, NULL, 0);
+    //MboxSend(procTable_mutex, NULL, 0);
     procTable[getpid()].status = READY;
-    MboxReceive(procTable_mutex, NULL, 0);
+    //MboxReceive(procTable_mutex, NULL, 0);
 
     *status = result[1];
     if (DEBUG3 && debugflag3)
@@ -542,14 +543,15 @@ int wait1Real(int * status)
 *  
 *   Terminate then checks if the process has any children
 *   If it doesnt:
-*       It checks to see if there is a waitblocked parent
-*           If there is it wakes up the parent
-
         It checks to see if there is a zap blocked parent
             If there is, it quits, parent will unblock automatically
+
+*       It checks to see if there is a waitblocked parent
+*           If there is it wakes up the parent
 *
 *       It checks to see if there is a running parent
 *           Become a zombie
+
     If it does:
         It cycles through each one, releasing zombies and zapping kids
 
@@ -591,8 +593,8 @@ void terminate (systemArgs *args)
             if (DEBUG3 && debugflag3)
                 USLOSS_Console("terminate(): terminating process's parent is wait blocked!\n");
             int message [] = {getpid(), termCode}; //build message
-            MboxSend( procTable[procTable[getpid()].parent->pid].privateMbox, message, sizeof(message));
             MboxReceive(procTable_mutex, NULL, 0);
+            MboxSend( procTable[procTable[getpid()].parent->pid].privateMbox, message, sizeof(message));
         }
         //If the parent hasn't called wait, block as a zombie before quitting
         else if(procTable[getpid()].parent->status == READY){
@@ -653,6 +655,13 @@ void terminate (systemArgs *args)
             MboxSend(procTable[getpid()].privateMbox, message, sizeof(message));
         }
     }
+    /*
+    if (procTable[getpid()].parent->status == WAIT_BLOCKED){
+        if (DEBUG3 && debugflag3)
+            USLOSS_Console("terminate(): parent still hasent awoken, blocking until then\n");
+        MboxSend(procTable[getpid()].privateMbox, NULL, 0);
+    }
+    */
 
     if (DEBUG3 && debugflag3)
             USLOSS_Console("terminate(): %s calling quit after cleaning the proc table\n", procTable[getpid()].name);
@@ -769,6 +778,7 @@ int semCreateReal(int initial_value)
     MboxSend(semTable_mutex, NULL, 0);
     semTable[newSemID].value = initial_value;
     semTable[newSemID].semID = newSemID;
+    semTable[newSemID].mboxID = MboxCreate(1,0);
     MboxReceive(semTable_mutex, NULL, 0);
     if (DEBUG3 && debugflag3)
             USLOSS_Console("semCreateReal(): returning sem with ID %d\n", newSemID);
@@ -788,6 +798,8 @@ void semP(systemArgs *args)
         args->arg4 = (void *) -1;
         return;
     }
+    //can only call this if the mutex is checked out!
+    //MboxSend()
     args->arg4 = (void *) semPReal(sem);
     setToUserMode();
 }

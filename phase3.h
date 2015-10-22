@@ -63,13 +63,14 @@ struct sem {
 struct semaphore {
 	int 		value;
 	int 		semID;
+	int 		mboxID;
 	procPtr		nextBlockedProc;
 };
 
 #define READY 	0
-#define WAIT_BLOCKED 1
+#define JOIN_BLOCKED 1
 #define ZOMBIE		 2
-#define JOIN_BLOCKED 11
+#define WAIT_BLOCKED 11
 #define ZAP_BLOCKED 12
 
 #endif /* _PHASE3_H */
