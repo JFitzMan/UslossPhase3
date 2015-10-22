@@ -70,6 +70,7 @@ struct semaphore {
 #define WAIT_BLOCKED 1
 #define ZOMBIE		 2
 #define JOIN_BLOCKED 11
+#define ZAP_BLOCKED 12
 
 #endif /* _PHASE3_H */
 

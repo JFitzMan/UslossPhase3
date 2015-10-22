@@ -343,21 +343,36 @@ int spawnReal(char *name, int (*func)(char *), char *arg,
 
     //add to parent's child list (via linked list traversal if needed)
     if (procTable[getpid()].nextChild != NULL){
+        int i = 1;
         //there are other children in the list, add to end
         procPtr cur = procTable[getpid()].nextChild;
         while (cur->nextSib != NULL){
             cur = cur->nextSib;
+            i++;
         }
         //cur now points to last sib in the list
         cur->nextSib = &procTable[kpid];
+        if (DEBUG3 && debugflag3){
+            USLOSS_Console("spawnReal(): this the %d child of process %d\n", i, getpid());
+            cur = procTable[getpid()].nextChild;
+            USLOSS_Console("List of children: ");
+            while (cur != NULL){
+                USLOSS_Console("%d,  ", cur->pid);
+                cur = cur->nextSib;
+            }
+        }
 
     }else{
         //this is the parents first child
+        if (DEBUG3 && debugflag3)
+            USLOSS_Console("spawnReal(): this is the first child of process %d\n", getpid());
         procTable[getpid()].nextChild = &procTable[kpid];
     }
 
     //END CRITICAL SECTION
     //release mutex box for proc table
+    if (DEBUG3 && debugflag3)
+        dumpProc();
     MboxReceive(procTable_mutex, NULL, 0);
 
     //just in case the child had higher priority, it's stuck in spawnLaunch
@@ -393,29 +408,46 @@ int spawnLaunch()
             USLOSS_Console("spawnLaunch(): finishing process table creation\n");
         MboxReceive(procTable[getpid()].privateMbox, 0, 0);
     }
-    //switch to user mode
+
+    //check to see if it's been zapped while waiting to run
+    if (isZapped()){
+        //switch to user mode
     //The idea here is to shift off the current mode bit and bring it
     //back in as 0
     setToUserMode();
 
     if (DEBUG3 && debugflag3){
             USLOSS_Console("spawnLaunch(): PRS set to user mode\n");
-            USLOSS_Console("procTable[getpid()].arg:%s\n", procTable[getpid()].arg);
+            //USLOSS_Console("procTable[getpid()].arg:%s\n", procTable[getpid()].arg);
     }
-    char argument [MAXARG];
-    if (procTable[getpid()].arg != NULL){
-        int i;
-        for (int i = 0; i < MAXARG; i++){
-            argument[i] = '\0';
-        }
-        for (int i = 0; i < strlen(procTable[getpid()].arg); i++){
-            argument[i] = procTable[getpid()].arg[i];
-        }
-    }   
-    int result = procTable[getpid()].start_func(argument);
+        Terminate(1);
+    }
+    else{
+        //switch to user mode
+     //The idea here is to shift off the current mode bit and bring it
+    //back in as 0
+    setToUserMode();
 
-    //terminate proc when/if it gets here, may term itself before this
-    Terminate(result);
+    if (DEBUG3 && debugflag3){
+            USLOSS_Console("spawnLaunch(): PRS set to user mode\n");
+            //USLOSS_Console("procTable[getpid()].arg:%s\n", procTable[getpid()].arg);
+    }
+
+        char argument [MAXARG];
+        if (procTable[getpid()].arg != NULL){
+         int i;
+         for (int i = 0; i < MAXARG; i++){
+             argument[i] = '\0';
+         }
+         for (int i = 0; i < strlen(procTable[getpid()].arg); i++){
+             argument[i] = procTable[getpid()].arg[i];
+         }
+        }   
+        int result = procTable[getpid()].start_func(argument);
+
+        //terminate proc when/if it gets here, may term itself before this
+        Terminate(result);
+    }
 
 }
 /*
@@ -512,6 +544,9 @@ int wait1Real(int * status)
 *   If it doesnt:
 *       It checks to see if there is a waitblocked parent
 *           If there is it wakes up the parent
+
+        It checks to see if there is a zap blocked parent
+            If there is, it quits, parent will unblock automatically
 *
 *       It checks to see if there is a running parent
 *           Become a zombie
@@ -543,8 +578,16 @@ void terminate (systemArgs *args)
     if (procTable[getpid()].nextChild == NULL){
         if (DEBUG3 && debugflag3)
             USLOSS_Console("terminate(): terminating process has no children\n");
+        //if there parent is zap blocked, quit.
+        if (procTable[getpid()].parent->status == ZAP_BLOCKED){
+            if (DEBUG3 && debugflag3)
+            USLOSS_Console("terminate(): terminating process has been zapped! quiting\n");
+            cleanProcSlot(getpid());
+            MboxReceive(procTable_mutex, NULL, 0);
+            quit(1);
+        }
         //if the parent is wait blocked, wake it up
-        if (procTable[getpid()].parent->status == WAIT_BLOCKED){
+        else if (procTable[getpid()].parent->status == WAIT_BLOCKED){
             if (DEBUG3 && debugflag3)
                 USLOSS_Console("terminate(): terminating process's parent is wait blocked!\n");
             int message [] = {getpid(), termCode}; //build message
@@ -576,6 +619,7 @@ void terminate (systemArgs *args)
                 next = NULL;
             else
                 next = cur->nextSib;
+
             if (cur->status == ZOMBIE){
                 int result [] = {-1, -1};
                 if (DEBUG3 && debugflag3)
@@ -585,8 +629,10 @@ void terminate (systemArgs *args)
             else{
                 if (DEBUG3 && debugflag3)
                     USLOSS_Console("terminate(): zapping a running child\n");
+                procTable[getpid()].status = ZAP_BLOCKED;
                 zap(cur->pid);
-            }   
+                procTable[getpid()].status = READY;
+            }
             cur = next;
         }
         //if the parent is wait blocked, wake it up
@@ -648,7 +694,7 @@ void dumpProc(){
     USLOSS_Console("\n   NAME   |   PID   |   PRIORITY   |  STATUS   |   PPID   |\n");
     USLOSS_Console("-----------------------------------------------------------------------------------\n");
     int i;
-    for(i = 0; i < 6; i++){
+    for(i = 0; i < 15; i++){
         USLOSS_Console(" %-9s| %-8d| %-13d|", procTable[i].name, procTable[i].pid, procTable[i].priority);
         switch(procTable[i].status){
             case READY:
