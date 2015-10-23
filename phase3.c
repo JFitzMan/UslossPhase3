@@ -746,10 +746,11 @@ void terminate (systemArgs *args)
     if (DEBUG3 && debugflag3)
         USLOSS_Console("terminate(): Receiving from proc table mutex\n");
     MboxReceive(7, NULL, 0);
-    
+
     quit(termCode);
 }
 
+//NOTICE: EXPECTS THE MUTEX TO BE CHECKD OUT!!
 void cleanProcSlot(int i)
 {
     procTable[i].pid = -1;
@@ -814,8 +815,12 @@ void semCreate(systemArgs *arg)
         arg->arg4 = -1;
     }
 
+    MboxSend(semTable_mutex, NULL, 0);
     int sem = semCreateReal(handle);
+    MboxReceive(semTable_mutex, NULL, 0);
+
     arg->arg1 = (void *) sem; 
+
     if (sem == -1)
         arg->arg4 = (void *) -1;
     else
@@ -824,6 +829,7 @@ void semCreate(systemArgs *arg)
     
 }
 
+//NOTICE: EXPECTS SEMTABLE MUTEX TO BE CHEKCED OUT
 int semCreateReal(int initial_value)
 {
     if (DEBUG3 && debugflag3)
@@ -846,11 +852,9 @@ int semCreateReal(int initial_value)
         return newSemID;
     }
     //set initital value and return
-    MboxSend(semTable_mutex, NULL, 0);
     semTable[newSemID].value = initial_value;
     semTable[newSemID].semID = newSemID;
     semTable[newSemID].mboxID = MboxCreate(1,0);
-    MboxReceive(semTable_mutex, NULL, 0);
     if (DEBUG3 && debugflag3)
             USLOSS_Console("semCreateReal(): returning sem with ID %d\n", newSemID);
     return newSemID;
@@ -869,23 +873,23 @@ void semP(systemArgs *args)
         args->arg4 = (void *) -1;
         return;
     }
-    //can only call this if the mutex is checked out!
-    //MboxSend()
     args->arg4 = (void *) semPReal(sem);
     setToUserMode();
 }
 
 int  semPReal(int semID)
 {
+    MboxSend(semTable[semID].mboxID, NULL, 0);
     if (DEBUG3 && debugflag3)
             USLOSS_Console("semPReal(): at beginning\n");
-    MboxSend(semTable_mutex, NULL, 0);
     //if value is positive
     if (semTable[semID].value > 0){
         if (DEBUG3 && debugflag3)
             USLOSS_Console("semPReal(): value positive, decrementing\n");
         semTable[semID].value--;
-        MboxReceive(semTable_mutex, NULL, 0);
+
+        MboxReceive(semTable[semID].mboxID, NULL, 0);
+
         return 0;
     }
     //value is negative, block
@@ -900,10 +904,10 @@ int  semPReal(int semID)
             }
             //cur now points to last sib in the list
             cur->nextProc = &procTable[getpid()];
-            MboxReceive(semTable_mutex, NULL, 0);
             if (DEBUG3 && debugflag3)
                 USLOSS_Console("semPReal(): added to end of blocked list %s\n", procTable[getpid()].arg);
             int result [] = {-2, -2};
+            MboxReceive(semTable[semID].mboxID, NULL, 0);
             MboxReceive(procTable[getpid()].privateMbox, result, sizeof(int[2]));
             if (DEBUG3 && debugflag3)
                 USLOSS_Console("semPReal(): awoken %s\n", procTable[getpid()].arg);
@@ -918,10 +922,10 @@ int  semPReal(int semID)
         }else{
             //this is the semaphores first blocked process
             semTable[semID].nextBlockedProc = &procTable[getpid()];
-            MboxReceive(semTable_mutex, NULL, 0);
             if (DEBUG3 && debugflag3)
                 USLOSS_Console("semPReal(): added to front of blocked list\n");
             int result [] = {-2, -2};
+            MboxReceive(semTable[semID].mboxID, NULL, 0);
             MboxReceive(procTable[getpid()].privateMbox, result, sizeof(int[2]));
             if (DEBUG3 && debugflag3)
                 USLOSS_Console("semPReal(): awoken %s\n", procTable[getpid()].arg);
@@ -933,6 +937,7 @@ int  semPReal(int semID)
             }
         }
     }
+    MboxCondReceive(semTable[semID].mboxID, NULL, 0);
     return 0;
 }
 
@@ -954,6 +959,7 @@ void semV(systemArgs *args)
 
 int  semVReal(int semID)
 {
+    MboxSend(semTable[semID].mboxID, NULL, 0);
     if (DEBUG3 && debugflag3)
             USLOSS_Console("semVReal(): at beginning\n");
 
@@ -971,13 +977,13 @@ int  semVReal(int semID)
             semTable[semID].nextBlockedProc = semTable[semID].nextBlockedProc->nextProc;
         }
         int message = 1;
+        MboxReceive(semTable[semID].mboxID, NULL, 0);
         MboxSend(mboxIDtoSend, &message, sizeof(int));
         return 0;
     }
 
-    MboxSend(semTable_mutex, NULL, 0);
     semTable[semID].value++;
-    MboxReceive(semTable_mutex, NULL, 0);
+    MboxCondReceive(semTable[semID].mboxID, NULL, 0);
     return 0;
 }
 
@@ -994,11 +1000,16 @@ void semFree(systemArgs *args)
         args->arg4 = (void *) -1;
         return;
     }
+
+    MboxSend(semTable_mutex, NULL, 0);
     args->arg4 = (void *) semFreeReal(semID);
+    MboxReceive(semTable_mutex, NULL, 0);
+
     setToUserMode();
 
 }
 
+//NOTICE: EXPECTS SEMTABLE MUTEX TO BE CHEKCED OUT
 int semFreeReal(int semID)
 {
     if (DEBUG3 && debugflag3)
