@@ -293,10 +293,6 @@ int spawnReal(char *name, int (*func)(char *), char *arg,
         return -1;
     }
 
-    //send to mutex box to edit proc table
-    //BEGIN CRITICAL SECTION
-    //MboxSend(procTable_mutex, NULL, 0);
-
     procTable[kpid].pid = kpid;
     procTable[kpid].start_func = func;
     procTable[kpid].name = name;
@@ -348,10 +344,6 @@ int spawnReal(char *name, int (*func)(char *), char *arg,
         procTable[getpid()].nextChild = &procTable[kpid];
     }
 
-    //END CRITICAL SECTION
-    //release mutex box for proc table
-    //MboxReceive(procTable_mutex, NULL, 0);
-
     //just in case the child had higher priority, it's stuck in spawnLaunch
     MboxCondSend(procTable[kpid].privateMbox, NULL, 0);
 
@@ -375,8 +367,6 @@ int spawnReal(char *name, int (*func)(char *), char *arg,
 */
 int spawnLaunch()
 {
-    //MboxSend(procTable_mutex, NULL, 0);
-    //MboxReceive(procTable_mutex, NULL, 0);
     if (DEBUG3 && debugflag3)
             USLOSS_Console("spawnLaunch(): at beginning\n");
 
@@ -388,42 +378,28 @@ int spawnLaunch()
         MboxReceive(procTable[getpid()].privateMbox, 0, 0);
     }
 
-    //check to see if it's been zapped while waiting to run
+    //check to see if it's been zapped while waiting to run, terminate if so
     if (isZapped()){
-        //switch to user mode
-    //The idea here is to shift off the current mode bit and bring it
-    //back in as 0
-    setToUserMode();
+        //switch to user mode so we can easily just call Terminate(1)
+        setToUserMode();
 
-    if (DEBUG3 && debugflag3){
+         if (DEBUG3 && debugflag3){
             USLOSS_Console("process was zapped! terminating\n");
             //USLOSS_Console("procTable[getpid()].arg:%s\n", procTable[getpid()].arg);
-    }
+        }
         Terminate(1);
     }
     else{
         //switch to user mode
-     //The idea here is to shift off the current mode bit and bring it
-    //back in as 0
-    setToUserMode();
+        setToUserMode();
 
-    if (DEBUG3 && debugflag3){
+        if (DEBUG3 && debugflag3){
             USLOSS_Console("spawnLaunch(): PRS set to user mode\n");
             //USLOSS_Console("procTable[getpid()].arg:%s\n", procTable[getpid()].arg);
-    }
+        }
 
-        char argument [MAXARG];
-        if (procTable[getpid()].arg != NULL){
-         int i;
-         for (int i = 0; i < MAXARG; i++){
-             argument[i] = '\0';
-         }
-         for (int i = 0; i < strlen(procTable[getpid()].arg); i++){
-             argument[i] = procTable[getpid()].arg[i];
-         }
-        }   
         int result = procTable[getpid()].start_func(procTable[getpid()].arg);
-
+    
         //terminate proc when/if it gets here, may term itself before this
         Terminate(result);
     }
@@ -494,20 +470,14 @@ int wait1Real(int * status)
     }  
 
     //modify status
-    //MboxSend(procTable_mutex, NULL, 0);
     procTable[getpid()].status = WAIT_BLOCKED;
-    //MboxReceive(procTable_mutex, NULL, 0);
 
     //block
     MboxReceive(procTable[getpid()].privateMbox, result, sizeof(int[2]));
     if (DEBUG3 && debugflag3)
                    USLOSS_Console("wait1Real(): awake\n");
-    //process has been woken up by send of terminating child
 
-    //get in synch with child and wait until child completely quits
-    
-
-
+    //process has been woken up by send of terminating child    
     if (DEBUG3 && debugflag3)
             USLOSS_Console("wait1Real(): process is waking up from wait block\n");
 
@@ -556,13 +526,6 @@ void terminate (systemArgs *args)
     //extract arg1, the termination code
     int termCode = (int) args->arg1;
 
-    //going to be reading proc table, don't want anyone to touch
-    if (DEBUG3 && debugflag3)
-            USLOSS_Console("terminate(): sending to procTable_mutex\n");
-    //MboxSend(procTable_mutex, NULL, 0);
-    if (DEBUG3 && debugflag3)
-            USLOSS_Console("terminate(): sending to procTable_mutex\n");
-
     //if there isn't any children
     if (procTable[getpid()].nextChild == NULL){
         if (DEBUG3 && debugflag3)
@@ -572,7 +535,6 @@ void terminate (systemArgs *args)
             if (DEBUG3 && debugflag3)
             USLOSS_Console("terminate(): terminating process has been zapped! quiting\n");
             cleanProcSlot(getpid());
-            //MboxReceive(procTable_mutex, NULL, 0);
             quit(1);
         }
         //if the parent is wait blocked, wake it up
@@ -580,15 +542,13 @@ void terminate (systemArgs *args)
             if (DEBUG3 && debugflag3)
                 USLOSS_Console("terminate(): terminating process's parent is wait blocked!\n");
             int message [] = {getpid(), termCode}; //build message
-            //MboxReceive(procTable_mutex, NULL, 0);
             MboxSend( procTable[procTable[getpid()].parent->pid].privateMbox, message, sizeof(message));
         }
         //If the parent hasn't called wait, block as a zombie before quitting
         else if(procTable[getpid()].parent->status == READY){
             //set status to zombie
             procTable[getpid()].status = ZOMBIE;
-            //block on private mailbox, release mutex first
-            //MboxReceive(procTable_mutex, NULL, 0);
+            //block on private mailbox
             if (DEBUG3 && debugflag3)
                 USLOSS_Console("terminate(): terminating process's parent hasn't waited! Zombie time!\n");
             int message [] = {getpid(), termCode};
@@ -601,7 +561,6 @@ void terminate (systemArgs *args)
         procPtr cur = procTable[getpid()%MAXPROC].nextChild;
         procPtr next = NULL;
         //walk down all silblings
-        //MboxReceive(procTable_mutex, NULL, 0);
         while (cur != NULL){
             //next is the handle to the next one to grab
             if (cur->nextSib == NULL)
@@ -639,7 +598,7 @@ void terminate (systemArgs *args)
         else if(procTable[getpid()].parent->status == READY){
             //set status to zombie
             procTable[getpid()].status = ZOMBIE;
-            //block on private mailbox, release mutex first
+            //block on private mailbox
             if (DEBUG3 && debugflag3)
                 USLOSS_Console("terminate(): terminating process's parent hasn't waited! Zombie time!\n");
             int message [] = {getpid(), termCode};
@@ -649,21 +608,17 @@ void terminate (systemArgs *args)
 
     if (DEBUG3 && debugflag3)
             USLOSS_Console("terminate(): %s calling quit after cleaning the proc table\n", procTable[getpid()].name);
-    //MboxSend(procTable_mutex, NULL, 0);
     if ( procTable[getpid()].nextSib == NULL )
         procTable[getpid()].parent->nextChild = NULL;
     else
         procTable[getpid()].parent->nextChild = procTable[getpid()].nextSib;
     if (DEBUG3 && debugflag3){
             USLOSS_Console("terminate(): at the end for %d\n", procTable[getpid()].pid);
-            //dumpProc();
     }
     cleanProcSlot(getpid());
-    //MboxReceive(procTable_mutex, NULL, 0);
     quit(termCode);
 }
 
-//DO NOT CALL WITHOUT MUTEX CHECKED OUT
 void cleanProcSlot(int i)
 {
     procTable[i].pid = -1;
