@@ -23,7 +23,7 @@ int semTable_mutex;
 struct semaphore semTable[MAXSEMS];
 //next function ptr for spawnLaunch to execute
 int (*next_func)(char *);
-char * next_arg[MAXARG];
+//char * next_arg[MAXARG];
 
 
 
@@ -88,7 +88,7 @@ int start2(char *arg)
         procTable[i].status = -1;
         procTable[i].nextProc = NULL;
     }
-    //proc table setup, in case we fdo a dump_proc later
+    //proc table setup, in case we do a dump_proc later
     procTable[1].name = "sentinel";
     procTable[1].priority = 6;
     procTable[1].pid = 1;
@@ -162,6 +162,13 @@ int start2(char *arg)
      */
      //MboxSend(toBlock, NULL, 0);
      pid = wait1Real(&status);
+     //dumpProc();
+
+     setToUserMode();
+     if (DEBUG3 && debugflag3)
+            USLOSS_Console("start2 is about to terminate\n");
+     Terminate(1);
+
 
 } /* start2 */
 
@@ -292,6 +299,7 @@ int spawnReal(char *name, int (*func)(char *), char *arg,
 
     //get values needed by spawn launch to globals so it can launch
     next_func = func;
+    /*
     if(arg == NULL) {
         int i;
         for (i = 0; i < MAXARG; i++)
@@ -308,7 +316,7 @@ int spawnReal(char *name, int (*func)(char *), char *arg,
         if (DEBUG3 && debugflag3)
             USLOSS_Console("spawnReal(): arg saved\n");
     }
-
+*/
     //create new process
     kpid = fork1(name, spawnLaunch, arg, stack_size, priority);
     if (DEBUG3 && debugflag3)
@@ -322,6 +330,33 @@ int spawnReal(char *name, int (*func)(char *), char *arg,
     procTable[kpid].start_func = func;
     procTable[kpid].name = name;
     procTable[kpid].status = READY;
+
+    if(arg == NULL) {
+        procTable[kpid].arg = NULL;
+        //int i;
+        //for (i = 0; i < MAXARG; i++)
+            //procTable[kpid].arg[i] = '\0';
+    }
+    else {
+        if (DEBUG3 && debugflag3)
+            USLOSS_Console("spawnReal(): there is an argument to set\n");
+        
+        /*int i;
+
+        char next_arg[MAXARG];
+        for (i = 0; i < MAXARG; i++)
+            next_arg[i] = '\0';
+
+        if (DEBUG3 && debugflag3)
+            USLOSS_Console("spawnReal(): here\n");
+        strcpy(next_arg, arg);
+        */
+
+        procTable[kpid].arg = &arg[0];
+        if (DEBUG3 && debugflag3)
+            USLOSS_Console("spawnReal(): copied arg over, arg: %s\n", procTable[kpid].arg);
+    }
+    /*
     //prevents seg fault if arg is NULL
     if(arg == NULL) 
         procTable[kpid].arg = NULL; 
@@ -332,6 +367,7 @@ int spawnReal(char *name, int (*func)(char *), char *arg,
             USLOSS_Console("spawnReal(): copied arg over, arg: %s\n", procTable[kpid].arg);
         //strcpy(procTable[kpid].arg, arg);
     }
+    */
     procTable[kpid].stack_size = stack_size;
     procTable[kpid].priority = priority;
     procTable[kpid].nextChild = NULL;
@@ -443,7 +479,7 @@ int spawnLaunch()
              argument[i] = procTable[getpid()].arg[i];
          }
         }   
-        int result = procTable[getpid()].start_func(argument);
+        int result = procTable[getpid()].start_func(procTable[getpid()].arg);
 
         //terminate proc when/if it gets here, may term itself before this
         Terminate(result);
@@ -517,10 +553,11 @@ int wait1Real(int * status)
 
     //block
     MboxReceive(procTable[getpid()].privateMbox, result, sizeof(int[2]));
-
+    if (DEBUG3 && debugflag3)
+                   USLOSS_Console("wait1Real(): awake\n");
     //process has been woken up by send of terminating child
     //get in synch with child and wait until child completely quits
-    zap(result[0]);
+    //zap(result[0]);
 
 
     if (DEBUG3 && debugflag3)
@@ -570,6 +607,11 @@ void terminate (systemArgs *args)
             USLOSS_Console("terminate(): at beginning\n");
     //extract arg1, the termination code
     int termCode = (int) args->arg1;
+    /*
+    if (procTable[getpid()].name.equals("start2") == 0){
+        if (DEBUG3 && debugflag3)
+            USLOSS_Console("terminate(): start2() trying to terminate\n");
+    }*/
 
     //going to be reading proc table, don't want anyone to touch
     if (DEBUG3 && debugflag3)
@@ -638,9 +680,13 @@ void terminate (systemArgs *args)
             cur = next;
         }
         //if the parent is wait blocked, wake it up
+        if (procTable[getpid()].pid == 3) {
+            quit(termCode);
+        }
         if (procTable[getpid()].parent->status == WAIT_BLOCKED){
             if (DEBUG3 && debugflag3)
                 USLOSS_Console("terminate(): terminating process's parent is wait blocked!\n");
+
             int message [] = {getpid(), termCode}; //build message
             MboxSend( procTable[procTable[getpid()].parent->pid].privateMbox, message, sizeof(message));
         }
@@ -700,7 +746,7 @@ void cleanProcSlot(int i)
  * Displays the current processes in the process table and any relevant information
  */
 void dumpProc(){
-    USLOSS_Console("\n   NAME   |   PID   |   PRIORITY   |  STATUS   |   PPID   |\n");
+    USLOSS_Console("\n   NAME   |   PID   |   PRIORITY   |  STATUS   |   PPID   |     ARG    |\n");
     USLOSS_Console("-----------------------------------------------------------------------------------\n");
     int i;
     for(i = 0; i < 15; i++){
@@ -718,7 +764,7 @@ void dumpProc(){
             default:
                 USLOSS_Console("           ");
         }
-        USLOSS_Console("| %-9d| %-12d| %-8d|\n", procTable[i].parentPid);
+        USLOSS_Console("| %-9d| %-12s| %-8d|\n", procTable[i].parentPid, procTable[i].arg);
         USLOSS_Console("-----------------------------------------------------------------------------------\n");
     }
     
