@@ -102,6 +102,7 @@ int start2(char *arg)
     procTable[getpid()].privateMbox = MboxCreate(0,sizeof(int[2]));
     procTable[getpid()].termCode = -1;
 
+
     MboxReceive(procTable_mutex, NULL, 0);
 
     //inititalize semTable
@@ -293,6 +294,11 @@ int spawnReal(char *name, int (*func)(char *), char *arg,
         return -1;
     }
 
+    //begin critical section, proc table entry creation
+    if (DEBUG3 && debugflag3)
+        USLOSS_Console("spawnReal(): Sending to proc table mutex\n");
+    MboxSend(7, NULL, 0);
+
     procTable[kpid].pid = kpid;
     procTable[kpid].start_func = func;
     procTable[kpid].name = name;
@@ -344,6 +350,10 @@ int spawnReal(char *name, int (*func)(char *), char *arg,
         procTable[getpid()].nextChild = &procTable[kpid];
     }
 
+    //end critical section, proc table entry creation
+    if (DEBUG3 && debugflag3)
+        USLOSS_Console("spawnReal(): Receiving from proc table mutex\n");
+    MboxReceive(7, NULL, 0);
     //just in case the child had higher priority, it's stuck in spawnLaunch
     MboxCondSend(procTable[kpid].privateMbox, NULL, 0);
 
@@ -369,13 +379,27 @@ int spawnLaunch()
 {
     if (DEBUG3 && debugflag3)
             USLOSS_Console("spawnLaunch(): at beginning\n");
+    //checkout mailbox to get status 
+    if (DEBUG3 && debugflag3)
+        USLOSS_Console("spawnLaunch(): Sending to proc table mutex\n");
+    MboxSend(7, NULL, 0);
 
     //create the mailbox and block so that spawnReal can finish making the proc table before moving on!
     if (procTable[getpid()].pid != getpid()){
         procTable[getpid()].privateMbox = MboxCreate(0, sizeof(int[2]));
         if (DEBUG3 && debugflag3)
             USLOSS_Console("spawnLaunch(): finishing process table creation\n");
+        //check mailbox back in
+        if (DEBUG3 && debugflag3)
+            USLOSS_Console("spawnLaunch(): Receiving from proc table mutex\n");
+        MboxReceive(7, NULL, 0);
         MboxReceive(procTable[getpid()].privateMbox, 0, 0);
+    }
+    else{
+        //still check back in anyway.
+        if (DEBUG3 && debugflag3)
+            USLOSS_Console("spawnLaunch(): Receiving from proc table mutex\n");
+        MboxReceive(7, NULL, 0);
     }
 
     //check to see if it's been zapped while waiting to run, terminate if so
@@ -417,9 +441,21 @@ void wait1(systemArgs *args)
     if (DEBUG3 && debugflag3)
             USLOSS_Console("wait1(): at beginning\n");
     //Wait has no input, check to make sure it was called legally
+    if (DEBUG3 && debugflag3)
+        USLOSS_Console("wait1(): Sending to proc table mutex\n");
+    MboxSend(7, NULL, 0);
     if (procTable[getpid()].nextChild == NULL){
         USLOSS_Console("wait1(): process calling Wait has no children!\n");
-        USLOSS_Halt(1);
+        args->arg1 = (void *) -1;
+        args->arg2 = (void *) -1;
+        if (DEBUG3 && debugflag3)
+            USLOSS_Console("wait1(): Receiving from proc table mutex\n");
+        MboxReceive(7, NULL, 0);
+    }
+    else{
+        if (DEBUG3 && debugflag3)
+            USLOSS_Console("wait1(): Receiving from proc table mutex\n");
+        MboxReceive(7, NULL, 0);
     }
     int kpid, status;
     kpid = wait1Real(&status);
@@ -449,25 +485,40 @@ int wait1Real(int * status)
     //                  [kpid to return, status to assign]
     int result [] = {-1, -1};
 
+    if (DEBUG3 && debugflag3)
+        USLOSS_Console("wait1Real(): Sending to proc table mutex\n");
+    MboxSend(7, NULL, 0);
+
     //check to see if there are any zombie kids before blocking!
     if (procTable[getpid()].nextChild != NULL){
 
+        //cur = first child
         procPtr cur = procTable[getpid()].nextChild;
+
         while (cur != NULL){
+            //if cur is a zombie, we can wake it up, and we can just join
             if (cur->status == ZOMBIE){
+                //check mutex back in
+                if (DEBUG3 && debugflag3)
+                    USLOSS_Console("wait1Real(): Receiving from proc table mutex\n");
+                MboxReceive(7, NULL, 0);
+                //wake up zombie kid
                 MboxReceive(cur->privateMbox, result, sizeof(int[2]));
+                //assign values from result array
                 *status = result[1];
                 if (DEBUG3 && debugflag3)
                    USLOSS_Console("wait1Real(): Zombie child! Returning\n");
-                //dumpProc();
-                  int stat;
+                int stat;
                 join(&stat);
     
                 return result[0];
             }
            cur = cur->nextSib;
         }
-    }  
+    } 
+    if (DEBUG3 && debugflag3)
+        USLOSS_Console("wait1Real(): CondReceiving from proc table mutex, in case it had no zombies\n");
+    MboxCondReceive(7, NULL, 0); 
 
     //modify status
     procTable[getpid()].status = WAIT_BLOCKED;
@@ -481,9 +532,15 @@ int wait1Real(int * status)
     if (DEBUG3 && debugflag3)
             USLOSS_Console("wait1Real(): process is waking up from wait block\n");
 
-    //MboxSend(procTable_mutex, NULL, 0);
+    if (DEBUG3 && debugflag3)
+        USLOSS_Console("wait1Real(): Sending to proc table mutex\n");
+    MboxSend(7, NULL, 0);
+
     procTable[getpid()].status = READY;
-    //MboxReceive(procTable_mutex, NULL, 0);
+
+    if (DEBUG3 && debugflag3)
+        USLOSS_Console("wait1Real(): Receiving from proc table mutex\n");
+    MboxReceive(7, NULL, 0);
 
     *status = result[1];
     if (DEBUG3 && debugflag3)
@@ -521,10 +578,25 @@ int wait1Real(int * status)
 
 void terminate (systemArgs *args)
 {
+
+    if (DEBUG3 && debugflag3)
+        USLOSS_Console("terminate(): Sending to proc table mutex\n");
+    MboxSend(7, NULL, 0);
+    
+    if (DEBUG3 && debugflag3)
+        USLOSS_Console("terminate(): Receiving from proc table mutex\n");
+    MboxReceive(7, NULL, 0);
+
+
+
     if (DEBUG3 && debugflag3)
             USLOSS_Console("terminate(): at beginning\n");
     //extract arg1, the termination code
     int termCode = (int) args->arg1;
+
+    if (DEBUG3 && debugflag3)
+        USLOSS_Console("terminate(): Sending to proc table mutex\n");
+    MboxSend(7, NULL, 0);
 
     //if there isn't any children
     if (procTable[getpid()].nextChild == NULL){
@@ -535,6 +607,10 @@ void terminate (systemArgs *args)
             if (DEBUG3 && debugflag3)
             USLOSS_Console("terminate(): terminating process has been zapped! quiting\n");
             cleanProcSlot(getpid());
+            //check mutex back in
+            if (DEBUG3 && debugflag3)
+                 USLOSS_Console("terminate(): Receiving from proc table mutex\n");
+            MboxReceive(7, NULL, 0);
             quit(1);
         }
         //if the parent is wait blocked, wake it up
@@ -542,6 +618,9 @@ void terminate (systemArgs *args)
             if (DEBUG3 && debugflag3)
                 USLOSS_Console("terminate(): terminating process's parent is wait blocked!\n");
             int message [] = {getpid(), termCode}; //build message
+            if (DEBUG3 && debugflag3)
+                USLOSS_Console("terminate(): Receiving from proc table mutex\n");
+            MboxReceive(7, NULL, 0);
             MboxSend( procTable[procTable[getpid()].parent->pid].privateMbox, message, sizeof(message));
         }
         //If the parent hasn't called wait, block as a zombie before quitting
@@ -552,16 +631,36 @@ void terminate (systemArgs *args)
             if (DEBUG3 && debugflag3)
                 USLOSS_Console("terminate(): terminating process's parent hasn't waited! Zombie time!\n");
             int message [] = {getpid(), termCode};
+            if (DEBUG3 && debugflag3)
+                USLOSS_Console("terminate(): Receiving from proc table mutex\n");
+            MboxReceive(7, NULL, 0);
             MboxSend(procTable[getpid()].privateMbox, message, sizeof(message));
         }
     }
     else{
         if (DEBUG3 && debugflag3)
+            USLOSS_Console("terminate(): Receiving from proc table mutex\n");
+        MboxReceive(7, NULL, 0);
+
+        if (DEBUG3 && debugflag3)
             USLOSS_Console("terminate(): terminating process has children. Slay them.\n");
+
+        if (DEBUG3 && debugflag3)
+            USLOSS_Console("terminate(): Sending to proc table mutex\n");
+        MboxSend(7, NULL, 0);
+
         procPtr cur = procTable[getpid()%MAXPROC].nextChild;
+
+        if (DEBUG3 && debugflag3)
+            USLOSS_Console("terminate(): Receiving from proc table mutex\n");
+        MboxReceive(7, NULL, 0);
+
         procPtr next = NULL;
         //walk down all silblings
         while (cur != NULL){
+            if (DEBUG3 && debugflag3)
+                USLOSS_Console("terminate(): Sending to proc table mutex\n");
+            MboxSend(7, NULL, 0);
             //next is the handle to the next one to grab
             if (cur->nextSib == NULL)
                 next = NULL;
@@ -572,26 +671,44 @@ void terminate (systemArgs *args)
                 int result [] = {-1, -1};
                 if (DEBUG3 && debugflag3)
                     USLOSS_Console("terminate(): Waking up zombie\n");
+                if (DEBUG3 && debugflag3)
+                    USLOSS_Console("terminate(): Receiving from proc table mutex\n");
+                MboxReceive(7, NULL, 0);
+
                 MboxReceive(cur->privateMbox, result, sizeof(int[2]));
             }
             else{
                 if (DEBUG3 && debugflag3)
                     USLOSS_Console("terminate(): zapping a running child\n");
                 procTable[getpid()].status = ZAP_BLOCKED;
+                if (DEBUG3 && debugflag3)
+                    USLOSS_Console("terminate(): Receiving from proc table mutex\n");
+                MboxReceive(7, NULL, 0);
                 zap(cur->pid);
                 procTable[getpid()].status = READY;
             }
             cur = next;
         }
         //if the parent is wait blocked, wake it up
+        if (DEBUG3 && debugflag3)
+                USLOSS_Console("terminate(): Sending to proc table mutex\n");
+        MboxSend(7, NULL, 0);
+
         if (procTable[getpid()].pid == 3) {
+            if (DEBUG3 && debugflag3)
+                USLOSS_Console("terminate(): Receiving from proc table mutex\n");
+            MboxReceive(7, NULL, 0);
             quit(termCode);
         }
-        if (procTable[getpid()].parent->status == WAIT_BLOCKED){
+
+        else if (procTable[getpid()].parent->status == WAIT_BLOCKED){
             if (DEBUG3 && debugflag3)
                 USLOSS_Console("terminate(): terminating process's parent is wait blocked!\n");
 
             int message [] = {getpid(), termCode}; //build message
+            if (DEBUG3 && debugflag3)
+                USLOSS_Console("terminate(): Receiving from proc table mutex\n");
+            MboxReceive(7, NULL, 0);
             MboxSend( procTable[procTable[getpid()].parent->pid].privateMbox, message, sizeof(message));
         }
         //If the parent hasn't called wait, block as a zombie before quitting
@@ -602,9 +719,19 @@ void terminate (systemArgs *args)
             if (DEBUG3 && debugflag3)
                 USLOSS_Console("terminate(): terminating process's parent hasn't waited! Zombie time!\n");
             int message [] = {getpid(), termCode};
+            if (DEBUG3 && debugflag3)
+                USLOSS_Console("terminate(): Receiving from proc table mutex\n");
+            MboxReceive(7, NULL, 0);
             MboxSend(procTable[getpid()].privateMbox, message, sizeof(message));
         }
+        if (DEBUG3 && debugflag3)
+            USLOSS_Console("terminate(): CondReceiving from proc table mutex, in case none of the above cases worked\n");
+        MboxCondReceive(7, NULL, 0);
     }
+
+    if (DEBUG3 && debugflag3)
+        USLOSS_Console("terminate(): Sending to proc table mutex\n");
+    MboxSend(7, NULL, 0);
 
     if (DEBUG3 && debugflag3)
             USLOSS_Console("terminate(): %s calling quit after cleaning the proc table\n", procTable[getpid()].name);
@@ -616,6 +743,10 @@ void terminate (systemArgs *args)
             USLOSS_Console("terminate(): at the end for %d\n", procTable[getpid()].pid);
     }
     cleanProcSlot(getpid());
+    if (DEBUG3 && debugflag3)
+        USLOSS_Console("terminate(): Receiving from proc table mutex\n");
+    MboxReceive(7, NULL, 0);
+    
     quit(termCode);
 }
 
